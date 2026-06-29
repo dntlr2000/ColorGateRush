@@ -25,7 +25,7 @@ Build and maintain **Color Gate Rush**, a fully procedural Unity hyper-casual ru
 
 ## Unity implementation assumptions
 
-- Target Unity: 2022.3 LTS or newer 3D project.
+- Target Unity: Unity 6 / 6000.x 3D project. This repository is pinned to 6000.0.69f1 and does not target Unity 2022.3 package compatibility.
 - Render pipeline: Built-in or URP-compatible code. Use shader fallback logic when creating materials.
 - Input: keyboard for editor, swipe/touch for mobile.
 - UI: use built-in uGUI unless the project already uses TextMeshPro.

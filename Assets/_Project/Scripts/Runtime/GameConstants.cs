@@ -16,11 +16,21 @@ namespace ColorGateRush
         public const float LaneMoveSharpness = 12f;
         public const int ComboCap = 10;
         public const int FinishMultiplierCap = 10;
+        public const int SameColorShardScore = 10;
+        public const int WrongColorShardPenalty = 15;
+        public const int GateScore = 5;
+        public const int ObstaclePenalty = 50;
 
         public static readonly float[] LaneX = { -LaneSpacing, 0f, LaneSpacing };
 
-        // Converts the gameplay color id into the neon palette used by procedural materials and VFX.
+        // Converts the gameplay color id into the active procedural palette.
         public static Color ToUnityColor(ColorId colorId)
+        {
+            return GameSettings.ColorAssistEnabled ? ToHighContrastColor(colorId) : ToNeonColor(colorId);
+        }
+
+        // Converts the gameplay color id into the default neon palette used by procedural materials and VFX.
+        private static Color ToNeonColor(ColorId colorId)
         {
             switch (colorId)
             {
@@ -34,6 +44,60 @@ namespace ColorGateRush
                     return new Color(0.55f, 1.0f, 0.29f);
                 default:
                     return Color.white;
+            }
+        }
+
+        // Converts the gameplay color id into a high-contrast assistive palette.
+        private static Color ToHighContrastColor(ColorId colorId)
+        {
+            switch (colorId)
+            {
+                case ColorId.Cyan:
+                    return new Color(0.0f, 0.70f, 1.0f);
+                case ColorId.Magenta:
+                    return new Color(1.0f, 0.18f, 0.25f);
+                case ColorId.Yellow:
+                    return new Color(1.0f, 0.86f, 0.0f);
+                case ColorId.Lime:
+                    return new Color(0.0f, 0.95f, 0.38f);
+                default:
+                    return Color.white;
+            }
+        }
+
+        // Returns a readable Korean color label for UI and tutorial text.
+        public static string ColorName(ColorId colorId)
+        {
+            switch (colorId)
+            {
+                case ColorId.Cyan:
+                    return "시안";
+                case ColorId.Magenta:
+                    return "마젠타";
+                case ColorId.Yellow:
+                    return "노랑";
+                case ColorId.Lime:
+                    return "라임";
+                default:
+                    return "색상";
+            }
+        }
+
+        // Returns the shape symbol paired with a gameplay color for color-assist readability.
+        public static string ColorSymbol(ColorId colorId)
+        {
+            switch (colorId)
+            {
+                case ColorId.Cyan:
+                    return "●";
+                case ColorId.Magenta:
+                    return "■";
+                case ColorId.Yellow:
+                    return "◆";
+                case ColorId.Lime:
+                    return "▲";
+                default:
+                    return "?";
             }
         }
 

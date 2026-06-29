@@ -9,6 +9,8 @@ namespace ColorGateRush
         [SerializeField] private float lookAhead = 7f;
 
         private Transform _target;
+        private float _shakeDuration;
+        private float _shakeStrength;
 
         // Assigns the runner target and snaps the camera to its starting follow position.
         public void SetTarget(Transform target)
@@ -35,8 +37,26 @@ namespace ColorGateRush
             }
 
             Vector3 desiredPosition = _target.position + offset;
+            if (_shakeDuration > 0f && GameSettings.CameraShakeEnabled)
+            {
+                _shakeDuration -= Time.deltaTime;
+                desiredPosition += Random.insideUnitSphere * _shakeStrength;
+            }
+
             transform.position = Vector3.Lerp(transform.position, desiredPosition, Time.deltaTime * followSharpness);
             LookAtTarget();
+        }
+
+        // Starts a brief low-amplitude camera shake for hit and clear feedback.
+        public void Shake(float strength, float duration)
+        {
+            if (!GameSettings.CameraShakeEnabled)
+            {
+                return;
+            }
+
+            _shakeStrength = Mathf.Max(_shakeStrength, strength);
+            _shakeDuration = Mathf.Max(_shakeDuration, duration);
         }
 
         // Rotates the camera toward a point ahead of the runner for portrait-friendly framing.

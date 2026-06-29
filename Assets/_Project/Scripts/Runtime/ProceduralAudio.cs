@@ -23,6 +23,11 @@ namespace ColorGateRush
         // Plays a short rising collect tone based on the active combo.
         public void PlayCollect(int combo)
         {
+            if (!GameSettings.SoundEnabled)
+            {
+                return;
+            }
+
             float frequency = 520f + Mathf.Clamp(combo, 0, 10) * 28f;
             PlayTone(frequency, 0.065f, 0.35f);
         }
@@ -30,18 +35,33 @@ namespace ColorGateRush
         // Plays the gate color-change tone.
         public void PlayGate()
         {
+            if (!GameSettings.SoundEnabled)
+            {
+                return;
+            }
+
             PlayTone(740f, 0.11f, 0.45f);
         }
 
         // Plays a low buzz for wrong-color shards and obstacle hits.
         public void PlayWrong()
         {
+            if (!GameSettings.SoundEnabled)
+            {
+                return;
+            }
+
             PlayBuzz(145f, 0.18f, 0.45f);
         }
 
         // Plays a short procedural arpeggio for the finish event.
         public void PlayFinish()
         {
+            if (!GameSettings.SoundEnabled)
+            {
+                return;
+            }
+
             PlayTone(880f, 0.08f, 0.35f);
             Invoke(nameof(PlayFinishSecondTone), 0.08f);
             Invoke(nameof(PlayFinishThirdTone), 0.16f);
@@ -62,7 +82,7 @@ namespace ColorGateRush
         // Synthesizes and plays a decaying sine tone.
         private void PlayTone(float frequency, float duration, float volume)
         {
-            if (_source == null)
+            if (_source == null || !GameSettings.SoundEnabled)
             {
                 return;
             }
@@ -85,7 +105,7 @@ namespace ColorGateRush
         // Synthesizes and plays a deterministic noisy buzz without imported audio assets.
         private void PlayBuzz(float frequency, float duration, float volume)
         {
-            if (_source == null)
+            if (_source == null || !GameSettings.SoundEnabled)
             {
                 return;
             }

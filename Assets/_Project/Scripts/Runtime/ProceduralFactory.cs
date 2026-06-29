@@ -6,11 +6,13 @@ namespace ColorGateRush
     public static class ProceduralFactory
     {
         private static readonly Dictionary<string, Material> MaterialCache = new Dictionary<string, Material>();
+        private static readonly Queue<TextMesh> FloatingTextPool = new Queue<TextMesh>();
 
         // Returns a cached solid material for a gameplay color.
         public static Material ColorMaterial(ColorId colorId)
         {
-            return SolidMaterial("color_" + colorId, GameConstants.ToUnityColor(colorId));
+            string assistSuffix = GameSettings.ColorAssistEnabled ? "_assist" : "_default";
+            return SolidMaterial("color_" + colorId + assistSuffix, GameConstants.ToUnityColor(colorId));
         }
 
         // Returns the cached dark material used by generated track slabs.
@@ -100,6 +102,65 @@ namespace ColorGateRush
             }
 
             return go;
+        }
+
+        // Attaches a color-assist symbol above a world object using built-in TextMesh.
+        public static TextMesh AttachColorSymbol(Transform parent, ColorId colorId, Vector3 localPosition, float size)
+        {
+            GameObject go = new GameObject("ColorSymbol_" + colorId);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localPosition;
+            go.transform.localRotation = Quaternion.Euler(65f, 0f, 0f);
+            TextMesh text = go.AddComponent<TextMesh>();
+            text.text = GameConstants.ColorSymbol(colorId);
+            text.anchor = TextAnchor.MiddleCenter;
+            text.alignment = TextAlignment.Center;
+            text.characterSize = GameSettings.ColorAssistEnabled ? size * 1.25f : size;
+            text.fontSize = GameSettings.ColorAssistEnabled ? 72 : 56;
+            text.color = GameSettings.ColorAssistEnabled ? Color.white : Color.black;
+            return text;
+        }
+
+        // Shows pooled floating score or feedback text near a gameplay event.
+        public static void FloatingText(Vector3 position, string text, Color color)
+        {
+            TextMesh mesh = GetFloatingText();
+            FloatingFeedback feedback = mesh.GetComponent<FloatingFeedback>();
+            feedback.Play(mesh, text, color, position, 0.75f, ReleaseFloatingText);
+        }
+
+        // Gets a text mesh from a tiny local pool to reduce feedback allocations.
+        private static TextMesh GetFloatingText()
+        {
+            while (FloatingTextPool.Count > 0)
+            {
+                TextMesh pooled = FloatingTextPool.Dequeue();
+                if (pooled != null)
+                {
+                    return pooled;
+                }
+            }
+
+            GameObject go = new GameObject("FloatingFeedback");
+            TextMesh mesh = go.AddComponent<TextMesh>();
+            mesh.anchor = TextAnchor.MiddleCenter;
+            mesh.alignment = TextAlignment.Center;
+            mesh.characterSize = 0.28f;
+            mesh.fontSize = 72;
+            go.AddComponent<FloatingFeedback>();
+            return mesh;
+        }
+
+        // Returns a floating text mesh to the pool after its animation completes.
+        private static void ReleaseFloatingText(TextMesh textMesh)
+        {
+            if (textMesh == null)
+            {
+                return;
+            }
+
+            textMesh.gameObject.SetActive(false);
+            FloatingTextPool.Enqueue(textMesh);
         }
 
         // Emits the short burst used for successful shard collection.

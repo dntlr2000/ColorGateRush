@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.EventSystems;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 #endif
@@ -13,17 +14,25 @@ namespace ColorGateRush
 
         private GameManager _manager;
         private Renderer _renderer;
+        private TextMesh _symbolText;
         private Vector2 _touchStart;
         private bool _hasTouchStart;
         private float _runTime;
+        private float _baseForwardSpeed = GameConstants.BaseForwardSpeed;
+        private float _maxForwardSpeed = GameConstants.MaxForwardSpeed;
+        private float _laneMoveSharpness = GameConstants.LaneMoveSharpness;
 
         public ColorId CurrentColor => currentColor;
 
         // Wires the runner to the active game manager and assigns its initial color and lane.
-        public void Configure(GameManager manager, ColorId startingColor)
+        public void Configure(GameManager manager, ColorId startingColor, float forwardSpeed = GameConstants.BaseForwardSpeed, float laneMoveSharpness = GameConstants.LaneMoveSharpness)
         {
             _manager = manager;
             lane = 1;
+            _runTime = 0f;
+            _baseForwardSpeed = forwardSpeed;
+            _maxForwardSpeed = forwardSpeed + 3.5f;
+            _laneMoveSharpness = laneMoveSharpness;
             SetColor(startingColor);
         }
 
@@ -47,6 +56,7 @@ namespace ColorGateRush
             _runTime += Time.deltaTime;
             HandleInput();
             MoveForwardAndLane();
+            UpdatePlayerSymbol();
         }
 
         // Updates the gameplay color and swaps the procedural material to match it.
@@ -62,6 +72,39 @@ namespace ColorGateRush
             {
                 _renderer.sharedMaterial = ProceduralFactory.ColorMaterial(colorId);
             }
+
+            EnsurePlayerSymbol();
+            if (_symbolText != null)
+            {
+                _symbolText.text = GameConstants.ColorSymbol(colorId);
+                _symbolText.color = GameSettings.ColorAssistEnabled ? Color.white : Color.black;
+                _symbolText.characterSize = GameSettings.ColorAssistEnabled ? 0.34f : 0.28f;
+                UpdatePlayerSymbol();
+            }
+        }
+
+        // Ensures the runner has a world-space symbol showing the current collection target.
+        private void EnsurePlayerSymbol()
+        {
+            if (_symbolText != null)
+            {
+                return;
+            }
+
+            Transform parent = transform.parent != null ? transform.parent : transform;
+            _symbolText = ProceduralFactory.AttachColorSymbol(parent, currentColor, transform.position + Vector3.up * 0.95f, 0.28f);
+        }
+
+        // Keeps the detached player symbol readable while the sphere rolls.
+        private void UpdatePlayerSymbol()
+        {
+            if (_symbolText == null)
+            {
+                return;
+            }
+
+            _symbolText.transform.position = transform.position + Vector3.up * 0.95f;
+            _symbolText.transform.rotation = Quaternion.Euler(65f, 0f, 0f);
         }
 
         // Routes input through the enabled Unity input backend for keyboard and touch lane changes.
@@ -111,6 +154,12 @@ namespace ColorGateRush
             UnityEngine.InputSystem.Controls.TouchControl primaryTouch = touchscreen.primaryTouch;
             if (primaryTouch.press.wasPressedThisFrame)
             {
+                if (IsPointerOverUi())
+                {
+                    _hasTouchStart = false;
+                    return;
+                }
+
                 _touchStart = primaryTouch.position.ReadValue();
                 _hasTouchStart = true;
             }
@@ -148,6 +197,12 @@ namespace ColorGateRush
             Touch touch = Input.GetTouch(0);
             if (touch.phase == TouchPhase.Began)
             {
+                if (IsPointerOverUi())
+                {
+                    _hasTouchStart = false;
+                    return;
+                }
+
                 _touchStart = touch.position;
                 _hasTouchStart = true;
             }
@@ -173,6 +228,24 @@ namespace ColorGateRush
             }
         }
 
+        // Prevents UI button touches from also becoming gameplay lane input.
+        private static bool IsPointerOverUi()
+        {
+            if (EventSystem.current == null)
+            {
+                return false;
+            }
+
+#if ENABLE_LEGACY_INPUT_MANAGER
+            if (Input.touchCount > 0)
+            {
+                return EventSystem.current.IsPointerOverGameObject(Input.GetTouch(0).fingerId);
+            }
+#endif
+
+            return EventSystem.current.IsPointerOverGameObject();
+        }
+
         // Applies a signed lane delta while keeping the player inside the track.
         private void ChangeLane(int delta)
         {
@@ -182,10 +255,10 @@ namespace ColorGateRush
         // Moves the runner forward and smoothly interpolates toward the selected lane center.
         private void MoveForwardAndLane()
         {
-            float speed = Mathf.Lerp(GameConstants.BaseForwardSpeed, GameConstants.MaxForwardSpeed, Mathf.Clamp01(_runTime / 45f));
+            float speed = Mathf.Lerp(_baseForwardSpeed, _maxForwardSpeed, Mathf.Clamp01(_runTime / 45f));
             Vector3 position = transform.position;
             position.z += speed * Time.deltaTime;
-            position.x = Mathf.Lerp(position.x, GameConstants.LaneX[lane], Time.deltaTime * GameConstants.LaneMoveSharpness);
+            position.x = Mathf.Lerp(position.x, GameConstants.LaneX[lane], Time.deltaTime * _laneMoveSharpness);
             position.y = GameConstants.PlayerY;
             transform.position = position;
             transform.Rotate(Vector3.right, speed * 70f * Time.deltaTime, Space.Self);
