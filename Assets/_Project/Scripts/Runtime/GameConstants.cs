@@ -2,6 +2,33 @@ using UnityEngine;
 
 namespace ColorGateRush
 {
+    public enum ColorShapeType
+    {
+        Sphere,
+        Cube,
+        Capsule,
+        Diamond
+    }
+
+    public readonly struct ColorVisualProfile
+    {
+        public readonly ColorId ColorId;
+        public readonly string ColorName;
+        public readonly string ShapeName;
+        public readonly ColorShapeType ShapeType;
+
+        // Stores the shared color and shape data used by world visuals and HUD copy.
+        public ColorVisualProfile(ColorId colorId, string colorName, string shapeName, ColorShapeType shapeType)
+        {
+            ColorId = colorId;
+            ColorName = colorName;
+            ShapeName = shapeName;
+            ShapeType = shapeType;
+        }
+
+        public string HudLabel => ColorName + " / " + ShapeName;
+    }
+
     public static class GameConstants
     {
         public const int LaneCount = 3;
@@ -15,7 +42,6 @@ namespace ColorGateRush
         public const float MaxForwardSpeed = 13.5f;
         public const float LaneMoveSharpness = 12f;
         public const int ComboCap = 10;
-        public const int FinishMultiplierCap = 10;
         public const int SameColorShardScore = 10;
         public const int WrongColorShardPenalty = 15;
         public const int GateScore = 5;
@@ -65,40 +91,34 @@ namespace ColorGateRush
             }
         }
 
-        // Returns a readable Korean color label for UI and tutorial text.
-        public static string ColorName(ColorId colorId)
+        // Returns the procedural visual profile paired with a gameplay color.
+        public static ColorVisualProfile GetVisualProfile(ColorId colorId)
         {
             switch (colorId)
             {
                 case ColorId.Cyan:
-                    return "시안";
+                    return new ColorVisualProfile(colorId, "시안", "구슬", ColorShapeType.Sphere);
                 case ColorId.Magenta:
-                    return "마젠타";
+                    return new ColorVisualProfile(colorId, "마젠타", "큐브", ColorShapeType.Cube);
                 case ColorId.Yellow:
-                    return "노랑";
+                    return new ColorVisualProfile(colorId, "노랑", "캡슐", ColorShapeType.Capsule);
                 case ColorId.Lime:
-                    return "라임";
+                    return new ColorVisualProfile(colorId, "라임", "다이아", ColorShapeType.Diamond);
                 default:
-                    return "색상";
+                    return new ColorVisualProfile(colorId, "색상", "형태", ColorShapeType.Sphere);
             }
         }
 
-        // Returns the shape symbol paired with a gameplay color for color-assist readability.
-        public static string ColorSymbol(ColorId colorId)
+        // Returns a readable Korean color label for UI and tutorial text.
+        public static string ColorName(ColorId colorId)
         {
-            switch (colorId)
-            {
-                case ColorId.Cyan:
-                    return "●";
-                case ColorId.Magenta:
-                    return "■";
-                case ColorId.Yellow:
-                    return "◆";
-                case ColorId.Lime:
-                    return "▲";
-                default:
-                    return "?";
-            }
+            return GetVisualProfile(colorId).ColorName;
+        }
+
+        // Returns a readable Korean shape label for HUD and rules text.
+        public static string ShapeName(ColorId colorId)
+        {
+            return GetVisualProfile(colorId).ShapeName;
         }
 
         // Advances to the next palette color for deterministic color cycling.

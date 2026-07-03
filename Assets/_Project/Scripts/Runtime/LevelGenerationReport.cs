@@ -21,6 +21,18 @@ namespace ColorGateRush
         public int TotalObstacles { get; private set; }
         public int FinishCount { get; private set; }
         public int MaxPossibleCorrectShardScore { get; private set; }
+        public int TotalMatchingShardsByNaiveCount { get; private set; }
+        public int RowsWithMultipleMatchingShards { get; private set; }
+        public int RowsWhereOnlyOneShardCanBeCollected { get; private set; }
+        public int EstimatedMaxAchievableScore { get; private set; }
+        public int EstimatedMaxCollectibleCount { get; private set; }
+        public int TwoStarScore { get; private set; }
+        public int ThreeStarScore { get; private set; }
+        public int ThreeStarMistakeAllowance { get; private set; }
+        public int NaiveMaxScore { get; private set; }
+        public int NaiveMinusRouteAwareMax { get; private set; }
+        public bool ClearRouteExists { get; private set; }
+        public bool PerfectOrNearPerfectRouteExists { get; private set; }
         public int UnsafeRowsRepaired { get; private set; }
         public int AllObstacleRowsPrevented { get; private set; }
         public int AllOffColorRowsPrevented { get; private set; }
@@ -71,6 +83,12 @@ namespace ColorGateRush
             }
 
             MaxPossibleCorrectShardScore += row.MatchingShardCount * GameConstants.SameColorShardScore;
+            TotalMatchingShardsByNaiveCount += row.MatchingShardCount;
+            if (row.MatchingShardCount > 1)
+            {
+                RowsWithMultipleMatchingShards++;
+                RowsWhereOnlyOneShardCanBeCollected++;
+            }
 
             if (!row.IsZAligned)
             {
@@ -151,6 +169,17 @@ namespace ColorGateRush
             return TotalShards / (float)TotalRows;
         }
 
+        // Returns how much smaller the route-aware max is than the naive count-only max.
+        public float GetRouteAwareMaxScoreRatio()
+        {
+            if (NaiveMaxScore <= 0)
+            {
+                return 0f;
+            }
+
+            return EstimatedMaxAchievableScore / (float)NaiveMaxScore;
+        }
+
         // Records a gate row for expected-color progression checks.
         public void RecordGate(int index, float z, ColorId targetColor)
         {
@@ -161,6 +190,20 @@ namespace ColorGateRush
         public void RecordFinish()
         {
             FinishCount++;
+        }
+
+        // Records the route-aware score estimate used by stage targets and balance reports.
+        public void RecordScoreEstimate(StageScoreEstimate estimate)
+        {
+            EstimatedMaxAchievableScore = estimate.EstimatedMaxAchievableScore;
+            EstimatedMaxCollectibleCount = estimate.EstimatedMaxCollectibleCount;
+            TwoStarScore = estimate.TwoStarScore;
+            ThreeStarScore = estimate.ThreeStarScore;
+            ThreeStarMistakeAllowance = estimate.ThreeStarMistakeAllowance;
+            NaiveMaxScore = estimate.NaiveMaxScore;
+            NaiveMinusRouteAwareMax = estimate.NaiveMinusRouteAwareMax;
+            ClearRouteExists = estimate.ClearRouteExists;
+            PerfectOrNearPerfectRouteExists = estimate.PerfectOrNearPerfectRouteExists;
         }
 
         // Adds a warning and emits one concise log entry for generation QA.

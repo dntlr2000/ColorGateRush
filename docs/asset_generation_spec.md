@@ -2,19 +2,21 @@
 
 ## Hard rule
 
-No external art, audio, font, model, video, or paid/free Asset Store package is required for the MVP.
+No external art, audio, font, model, prefab, video, or paid/free Asset Store package is required for the MVP.
 
 ## Geometry
 
 | Asset | Generation method | Notes |
 |---|---|---|
 | Player | `GameObject.CreatePrimitive(PrimitiveType.Sphere)` | Rigidbody kinematic, sphere collider |
-| Shard | Sphere | Trigger collider, color-coded |
-| Gate | Cubes | One transparent trigger per lane, visible arch frame |
-| Obstacle | Cube | Trigger collider or blocking wall |
-| Track | Cube segments | Long rectangular slabs |
-| Finish | Cube trigger + arch | Clear visual endpoint |
-| Color symbols | TextMesh | Built-in shape symbols paired with each color |
+| Shard | Color-specific primitive shape | Trigger collider, color-coded and silhouette-coded |
+| Shard glow | Sphere child | Non-colliding translucent shell |
+| Gate | Cubes | Full-width transparent trigger, arch frame, shape marker, cue strips |
+| Obstacle | Cube + visual details | Trigger collider plus non-colliding warning stripes/spikes |
+| Track | Cube segments | Slabs plus visual-only rails, separators, edge glow, rhythm stripes |
+| Background | Cubes | Backdrop panels and side glow panels |
+| Finish | Cube trigger + arch/checkers | Clear endpoint with primitive checker strip |
+| Player accent | Color-specific primitive shape | Non-colliding current color/shape accent near the player |
 
 ## Materials
 
@@ -34,6 +36,8 @@ Palette:
 - Obstacle: red/orange
 - Finish: white/gold
 
+`VisualTheme` is the source of truth for background, fog, track, obstacle, finish, HUD, and VFX colors. High contrast mode returns an alternate code-defined theme without creating ScriptableObject assets. Stage configs cycle through five code-defined theme variations by `themeIndex`.
+
 Transparent gate material:
 
 - Alpha around 0.35.
@@ -44,13 +48,21 @@ Transparent gate material:
 
 Create runtime ParticleSystem bursts:
 
-- Collect: small colored burst.
-- Gate: vertical ring-like burst or short shower.
-- Fail: red burst.
-- Finish: larger white/gold burst.
+- Collect: small colored burst plus a tiny sparkle ring.
+- Gate: vertical ring-like burst plus short color burst.
+- Fail: red/warning shock burst.
+- Finish: larger gold/white burst plus ring.
 - Floating score: pooled runtime `TextMesh` feedback.
 
 Use short lifetime and low particle counts for mobile.
+
+## Lighting and tone
+
+- Camera background color, fog color, ambient light, and directional light come from `VisualTheme`.
+- `RenderSettings.skybox = null` removes the default Unity skybox feel.
+- `Tools/Color Gate Rush/Apply Visual Theme` can reapply the code-defined scene tone.
+- URP Volume/post-processing is optional; the MVP uses safe fallback visual settings to avoid compile risk when URP APIs differ.
+- Bloom/vignette/motion blur are not required for readability and mobile performance.
 
 ## Audio
 
@@ -71,27 +83,35 @@ Generate a Canvas and basic text at runtime:
 - Score
 - Combo
 - Current color
+- Current color and shape label
 - Stage number and `★1/★2/★3` targets during play
+- Score remaining to the 3-star target during play
+- Top-left HUD contrast panel with text shadow
+- Theme-driven menu/pause/result panels and accent buttons
 - Pause button anchored to the screen top-right
 - Settings screen for Sound, Camera Shake, Color Assist, and guarded Reset Progress
 - Stage 1 first-run tutorial panel
 - State/result message
+- Short stage-start toast that auto-hides after a few seconds and does not change game state
+- Scrollable 30-stage selection grid with locked/unlocked/star states
 - Optional seed/debug string
 
 Use built-in uGUI for MVP.
 
-Result screens remain open until explicit player input through Retry, Stage Select, Main Menu, or Next Stage buttons. They do not use timer-based or global tap restart.
+Result screens remain open until explicit player input through Retry, Stage Select, Main Menu, or Next Stage buttons. They do not use timer-based or global tap restart. Gameplay does not keep persistent center guide text; detailed rules live in Rules and compact star/score data remains in the HUD.
+
+Release validation treats imported Texture2D, AudioClip, Model, Font, and Prefab assets under `Assets/_Project` as hard failures. All HUD/menu/result UI is generated at runtime.
 
 ## Accessibility
 
-Each `ColorId` has one source-of-truth color name and symbol:
+Each `ColorId` has one source-of-truth color name and primitive shape:
 
-- Cyan: `●`
-- Magenta: `■`
-- Yellow: `◆`
-- Lime: `▲`
+- Cyan: Sphere / `구슬`
+- Magenta: Cube / `큐브`
+- Yellow: Capsule / `캡슐`
+- Lime: Diamond-like rotated Cube / `다이아`
 
-Color Assist / high contrast mode uses the same symbols and an alternate procedural palette. Camera shake feedback is controlled by `CGR_CameraShake`. No sprite, image, model, or font import is required.
+Color Assist / high contrast mode uses the same shapes and an alternate procedural palette. Shards, gate markers, and the player accent are procedural primitives, while the player body keeps the active material color. Camera shake feedback is controlled by `CGR_CameraShake`. No sprite, image, model, or font import is required.
 
 ## Stage and fairness data
 
@@ -102,6 +122,9 @@ No external data file is required for stages. Stage configuration is generated i
 - obstacle, matching shard, off-color shard, safe-empty-lane chances, and gate interval;
 - available color count;
 - 2-star and 3-star score targets;
+- route-aware estimated max score and best-route collectible count;
+- naive count-only max score, rows with multiple matching shards, and naive-vs-route-aware score difference;
+- 3-star mistake allowance, difficulty tier, and visual theme index;
 - player forward speed and lane movement speed.
 
 Fair generation rules:
@@ -118,4 +141,17 @@ Fair generation rules:
 - early stages reduce matching-shard overpopulation by favoring safe empty lanes over guaranteed matching shards;
 - early unsafe-row repair can replace an obstacle or off-color shard with a matching shard before using an empty lane;
 - validator reports shard rows, empty rows, obstacle rows, total shards, total obstacles, average shards per row, obstacle row ratio, and matching shard row ratio;
-- validator smoke tests generate all MVP stages without saving imported art/audio/model assets.
+- validator reports route-aware max score, star targets, three-star ratio, mistake allowance, and theme index for Stage 1-30;
+- `Tools/Color Gate Rush/Generate Balance Report` prints naive max, route-aware max, target scores, density, and warning data for Stage 1-30;
+- validator smoke tests generate all 30 MVP content stages without saving imported art/audio/model/font/prefab assets;
+- visual polish validation checks `VisualTheme`, generated backdrop/track roots, visual-only obstacle/gate/finish details, HUD contrast, and legacy symbol removal.
+
+Star target data:
+
+- 1 star is awarded for reaching the finish.
+- Any clear with at least 1 star unlocks the next stage.
+- 2-star targets are the rounded-up two-thirds point of the 3-star target.
+- 3-star targets are based on a strict percentage of route-aware estimated max score, roughly 93-98% by tier.
+- `StageScoreAnalyzer` evaluates row/lane choices, combo scoring, off-color penalties, gate score, and row-spacing-based lane reach.
+- One generated row is one decision; multiple matching shards in the same row still count as at most one collectible in route-aware max score.
+- Balance report compares naive count-only max score with route-aware max score to catch impossible or overly strict 3-star targets.

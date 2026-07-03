@@ -26,8 +26,12 @@ namespace ColorGateRush.EditorTools
             EnsureTypeExists<ProceduralAudio>();
             EnsureInputConfiguration();
             EnsureStageProgressionRules();
+            EnsureFinishUsesHudScoreForStars();
             EnsurePauseAndMenuFlowReferences();
             EnsureSettingsAndTutorialReferences();
+            EnsureStageStartHintReferences();
+            EnsureVisualReadabilityReferences();
+            EnsureVisualPolishReferences();
             EnsureNoAutomaticRestartReferences();
             EnsureRuntimeFolderHasNoUnityEditorReferences();
             EnsureNoMonoBehaviourFileNameMismatch();
@@ -44,6 +48,15 @@ namespace ColorGateRush.EditorTools
         public static void ValidateBuild()
         {
             Validate();
+        }
+
+        [MenuItem("Tools/Color Gate Rush/Validate Visual Polish")]
+        // Validates visual polish source hooks without mutating the open scene.
+        public static void ValidateVisualPolish()
+        {
+            EnsureVisualReadabilityReferences();
+            EnsureVisualPolishReferences();
+            Debug.Log("Color Gate Rush visual polish validation passed.");
         }
 
         [MenuItem("Tools/Color Gate Rush/Generate Balance Report")]
@@ -140,13 +153,18 @@ namespace ColorGateRush.EditorTools
             }
         }
 
-        // Verifies stage config count, default unlock assumptions, and three-star-only unlock rules.
+        // Verifies stage config count, default unlock assumptions, and one-star clear unlock rules.
         private static void EnsureStageProgressionRules()
         {
             StageManager stageManager = new StageManager();
             if (stageManager.Stages == null || stageManager.Stages.Length < StageManager.TotalStageCount)
             {
                 throw new InvalidOperationException("StageManager must provide at least " + StageManager.TotalStageCount + " stages.");
+            }
+
+            if (StageManager.TotalStageCount < 30)
+            {
+                throw new InvalidOperationException("Color Gate Rush content expansion requires at least 30 stages.");
             }
 
             if (!stageManager.IsStageUnlocked(1))
@@ -156,9 +174,39 @@ namespace ColorGateRush.EditorTools
 
             foreach (StageConfig stage in stageManager.Stages)
             {
-                if (stage.TwoStarScore <= 0 || stage.ThreeStarScore <= 0 || stage.TwoStarScore > stage.ThreeStarScore)
+                if (stage.TwoStarScore <= 0 || stage.ThreeStarScore <= 0 || stage.TwoStarScore >= stage.ThreeStarScore)
                 {
                     throw new InvalidOperationException("Invalid star target order for stage " + stage.StageIndex + ".");
+                }
+
+                int expectedTwoStar = StageScoreAnalyzer.CalculateTwoStarFromThreeStar(stage.ThreeStarScore);
+                if (stage.TwoStarScore != expectedTwoStar)
+                {
+                    throw new InvalidOperationException("Stage " + stage.StageIndex + " two-star target must be two-thirds of three-star target. Expected " + expectedTwoStar + ".");
+                }
+
+                if (stage.EstimatedMaxAchievableScore <= 0)
+                {
+                    throw new InvalidOperationException("Stage " + stage.StageIndex + " must expose a positive route-aware max score.");
+                }
+
+                if (stage.ThreeStarScore > stage.EstimatedMaxAchievableScore)
+                {
+                    throw new InvalidOperationException("Stage " + stage.StageIndex + " has an impossible three-star target.");
+                }
+
+                if (stage.ThemeIndex < 0 || stage.ThemeIndex >= VisualTheme.ThemeVariationCount)
+                {
+                    throw new InvalidOperationException("Stage " + stage.StageIndex + " has an invalid visual theme index.");
+                }
+
+                for (int otherIndex = 0; otherIndex < stageManager.Stages.Length; otherIndex++)
+                {
+                    StageConfig other = stageManager.Stages[otherIndex];
+                    if (other.StageIndex != stage.StageIndex && other.Seed == stage.Seed)
+                    {
+                        throw new InvalidOperationException("Stages must use unique deterministic seeds. Duplicate seed: " + stage.Seed);
+                    }
                 }
             }
 
@@ -183,9 +231,113 @@ namespace ColorGateRush.EditorTools
                 throw new InvalidOperationException("Three-star target does not award 3 stars.");
             }
 
-            if (stageManager.WouldUnlockNextStage(firstStage, 1) || stageManager.WouldUnlockNextStage(firstStage, 2) || !stageManager.WouldUnlockNextStage(firstStage, 3))
+            if (stageManager.WouldUnlockNextStage(firstStage, 0)
+                || !stageManager.WouldUnlockNextStage(firstStage, 1)
+                || !stageManager.WouldUnlockNextStage(firstStage, 2)
+                || !stageManager.WouldUnlockNextStage(firstStage, 3))
             {
-                throw new InvalidOperationException("Only 3 stars should unlock the next stage.");
+                throw new InvalidOperationException("Any cleared stage with at least 1 star should unlock the next stage.");
+            }
+
+            EnsureNoLegacyThreeStarUnlockText();
+        }
+
+        // Fails validation when old copy still tells players that three stars are required for unlock.
+        private static void EnsureNoLegacyThreeStarUnlockText()
+        {
+            string[] checkedPaths =
+            {
+                "Assets/_Project/Scripts/Runtime/RuntimeUi.cs",
+                "GAME_DESIGN.md",
+                "README.md",
+                "docs/automation_workflow.md",
+                "docs/asset_generation_spec.md",
+                "docs/unity_project_structure.md"
+            };
+            string[] legacyPhrases =
+            {
+                "별 3개를 달성하면 다음 스테이지가 열립니다",
+                "별 3개를 달성해야 다음 스테이지가 열립니다",
+                "별 3개를 얻으면 다음 스테이지가 열립니다",
+                "Only a 3-star clear unlocks",
+                "3-star clears unlock the next stage",
+                "only 3-star clears unlock"
+            };
+
+            foreach (string path in checkedPaths)
+            {
+                if (!File.Exists(path))
+                {
+                    continue;
+                }
+
+                string source = File.ReadAllText(path);
+                foreach (string phrase in legacyPhrases)
+                {
+                    if (source.Contains(phrase))
+                    {
+                        throw new InvalidOperationException("Legacy three-star unlock text remains in " + path + ": " + phrase);
+                    }
+                }
+            }
+        }
+
+        // Verifies the stage-start hint is a transient UI toast and not a gameplay transition timer.
+        private static void EnsureStageStartHintReferences()
+        {
+            string runtimeUiPath = "Assets/_Project/Scripts/Runtime/RuntimeUi.cs";
+            if (!File.Exists(runtimeUiPath))
+            {
+                throw new InvalidOperationException("Missing RuntimeUi script for stage-start hint validation.");
+            }
+
+            string source = File.ReadAllText(runtimeUiPath);
+            if (!source.Contains("ShowStageStartHint") || !source.Contains("_messageHideAt") || !source.Contains("Time.unscaledTime"))
+            {
+                throw new InvalidOperationException("RuntimeUi must implement a transient unscaled stage-start hint.");
+            }
+
+            if (!source.Contains("_hintText.text = string.Empty") || !source.Contains("ClearMessage();"))
+            {
+                throw new InvalidOperationException("RuntimeUi must clear persistent center hint text and expose ClearMessage for state transitions.");
+            }
+
+            if (source.Contains("StartRun(") || source.Contains("StartStage(") || source.Contains("RestartCurrentRun("))
+            {
+                throw new InvalidOperationException("RuntimeUi stage-start hint must not trigger gameplay transitions.");
+            }
+        }
+
+        // Verifies finish completion saves the same score shown in the HUD instead of applying a hidden multiplier.
+        private static void EnsureFinishUsesHudScoreForStars()
+        {
+            string gameManagerPath = "Assets/_Project/Scripts/Runtime/GameManager.cs";
+            string constantsPath = "Assets/_Project/Scripts/Runtime/GameConstants.cs";
+            if (!File.Exists(gameManagerPath) || !File.Exists(constantsPath))
+            {
+                throw new InvalidOperationException("Missing scripts for finish star score validation.");
+            }
+
+            string gameManagerSource = File.ReadAllText(gameManagerPath);
+            string constantsSource = File.ReadAllText(constantsPath);
+            string[] bannedTokens =
+            {
+                "FinishMultiplier",
+                "_score *=",
+                "FloorToInt(_score / 250f)"
+            };
+
+            foreach (string token in bannedTokens)
+            {
+                if (gameManagerSource.Contains(token) || constantsSource.Contains(token))
+                {
+                    throw new InvalidOperationException("Finish score multiplier must not affect star ratings: " + token);
+                }
+            }
+
+            if (!gameManagerSource.Contains("SaveStageResult(_currentStage, _score)"))
+            {
+                throw new InvalidOperationException("Completed stages should save the current HUD score for star rating.");
             }
         }
 
@@ -321,6 +473,146 @@ namespace ColorGateRush.EditorTools
             }
         }
 
+        // Verifies the color/shape visual source of truth, HUD contrast panel, and removal of legacy symbol overlays.
+        private static void EnsureVisualReadabilityReferences()
+        {
+            string constantsPath = "Assets/_Project/Scripts/Runtime/GameConstants.cs";
+            string factoryPath = "Assets/_Project/Scripts/Runtime/ProceduralFactory.cs";
+            string gameManagerPath = "Assets/_Project/Scripts/Runtime/GameManager.cs";
+            string generatorPath = "Assets/_Project/Scripts/Runtime/LevelGenerator.cs";
+            string runnerPath = "Assets/_Project/Scripts/Runtime/LaneRunnerController.cs";
+            string runtimeUiPath = "Assets/_Project/Scripts/Runtime/RuntimeUi.cs";
+            string[] requiredFiles = { constantsPath, factoryPath, gameManagerPath, generatorPath, runnerPath, runtimeUiPath };
+            foreach (string path in requiredFiles)
+            {
+                if (!File.Exists(path))
+                {
+                    throw new InvalidOperationException("Missing script for visual readability validation: " + path);
+                }
+            }
+
+            string constantsSource = File.ReadAllText(constantsPath);
+            string factorySource = File.ReadAllText(factoryPath);
+            string gameManagerSource = File.ReadAllText(gameManagerPath);
+            string generatorSource = File.ReadAllText(generatorPath);
+            string runnerSource = File.ReadAllText(runnerPath);
+            string runtimeUiSource = File.ReadAllText(runtimeUiPath);
+            string combinedRuntimeSource = constantsSource + factorySource + gameManagerSource + generatorSource + runnerSource + runtimeUiSource;
+            string[] bannedLegacyTokens =
+            {
+                "AttachColorSymbol",
+                "ColorSymbol",
+                "_symbolText",
+                "ColorSymbol_"
+            };
+
+            foreach (string token in bannedLegacyTokens)
+            {
+                if (combinedRuntimeSource.Contains(token))
+                {
+                    throw new InvalidOperationException("Legacy text symbol overlay reference remains: " + token);
+                }
+            }
+
+            string[] requiredVisualTokens =
+            {
+                "ColorShapeType",
+                "ColorVisualProfile",
+                "GetVisualProfile",
+                "ShapeName",
+                "CreateShardVisual",
+                "CreateColorShape",
+                "CreatePlayerAccent",
+                "PlayerAccentMaterial"
+            };
+
+            foreach (string token in requiredVisualTokens)
+            {
+                if (!combinedRuntimeSource.Contains(token))
+                {
+                    throw new InvalidOperationException("Color/shape visual source reference missing: " + token);
+                }
+            }
+
+            if (!generatorSource.Contains("CreateShardVisual"))
+            {
+                throw new InvalidOperationException("LevelGenerator should create shards through shape-aware procedural visuals.");
+            }
+
+            if (!runnerSource.Contains("CreatePlayerAccent") || !runnerSource.Contains("ApplyPlayerAccentMaterial"))
+            {
+                throw new InvalidOperationException("Player current color should be expressed with a procedural accent, not text.");
+            }
+
+            if (!runtimeUiSource.Contains("HudInfoPanel") || !runtimeUiSource.Contains("AddTextShadow") || !runtimeUiSource.Contains("profile.HudLabel"))
+            {
+                throw new InvalidOperationException("Runtime HUD should include a contrast panel, text shadow, and color/shape label.");
+            }
+        }
+
+        // Verifies the visual polish sprint has a theme source and generated world/UI polish hooks.
+        private static void EnsureVisualPolishReferences()
+        {
+            string themePath = "Assets/_Project/Scripts/Runtime/VisualTheme.cs";
+            string factoryPath = "Assets/_Project/Scripts/Runtime/ProceduralFactory.cs";
+            string generatorPath = "Assets/_Project/Scripts/Runtime/LevelGenerator.cs";
+            string runtimeUiPath = "Assets/_Project/Scripts/Runtime/RuntimeUi.cs";
+            string bootstrapPath = "Assets/_Project/Scripts/Editor/BootstrapColorGateRush.cs";
+            string animatorPath = "Assets/_Project/Scripts/Runtime/ShardVisualAnimator.cs";
+            string[] requiredFiles = { themePath, factoryPath, generatorPath, runtimeUiPath, bootstrapPath, animatorPath };
+            foreach (string path in requiredFiles)
+            {
+                if (!File.Exists(path))
+                {
+                    throw new InvalidOperationException("Missing script for visual polish validation: " + path);
+                }
+            }
+
+            string themeSource = File.ReadAllText(themePath);
+            string factorySource = File.ReadAllText(factoryPath);
+            string generatorSource = File.ReadAllText(generatorPath);
+            string runtimeUiSource = File.ReadAllText(runtimeUiPath);
+            string bootstrapSource = File.ReadAllText(bootstrapPath);
+            string animatorSource = File.ReadAllText(animatorPath);
+            string combinedSource = themeSource + factorySource + generatorSource + runtimeUiSource + bootstrapSource + animatorSource;
+            string[] requiredTokens =
+            {
+                "VisualThemeProfile",
+                "VisualTheme.Current",
+                "CameraBackgroundColor",
+                "TrackBaseColor",
+                "HudPanelColor",
+                "BackgroundRoot",
+                "TrackVisualRoot",
+                "TrackEdgeRail",
+                "TrackRhythmStripe",
+                "ShardGlow",
+                "ShardVisualAnimator",
+                "ObstacleWarningTop",
+                "ObstacleSpike",
+                "GateApproachCue",
+                "FinishChecker",
+                "ApplySceneLighting",
+                "RenderSettings.skybox = null",
+                "ScreenPanelColor",
+                "ButtonColor",
+                "Apply Visual Theme"
+            };
+
+            foreach (string token in requiredTokens)
+            {
+                if (!combinedSource.Contains(token))
+                {
+                    throw new InvalidOperationException("Visual polish hook missing: " + token);
+                }
+            }
+
+            if (!factorySource.Contains("VisualPrimitive") || !factorySource.Contains("DisableCollider"))
+            {
+                throw new InvalidOperationException("Decorative geometry must use visual-only primitive helpers.");
+            }
+        }
+
         // Fails validation when delayed restart or result-screen global touch retry code remains.
         private static void EnsureNoAutomaticRestartReferences()
         {
@@ -442,7 +734,7 @@ namespace ColorGateRush.EditorTools
 
                     EnsureGeneratedCount<CollectibleShard>(generatedRoot, 1);
                     EnsureGeneratedCount<ColorGate>(generatedRoot, 1);
-                    EnsureGeneratedCount<ObstacleBlock>(generatedRoot, 1);
+                    EnsureGeneratedCount<ObstacleBlock>(generatedRoot, stage.StageIndex == 1 ? 0 : 1);
                     EnsureGeneratedCount<FinishLine>(generatedRoot, 1);
                     EnsureTriggerColliders<CollectibleShard>(generatedRoot);
                     EnsureTriggerColliders<ColorGate>(generatedRoot);
@@ -454,6 +746,7 @@ namespace ColorGateRush.EditorTools
                     }
 
                     EnsureGeneratedRowsAreFair(generator.LastReport);
+                    EnsureGeneratedScoreTargets(generator.LastReport, stage);
                     WarnAboutBalanceIfNeeded(generator.LastReport);
                     Debug.Log(BuildGenerationSummary(generator.LastReport, stage));
 
@@ -505,11 +798,83 @@ namespace ColorGateRush.EditorTools
             }
         }
 
+        // Verifies route-aware score targets are possible and strict enough for near-perfect three-star play.
+        private static void EnsureGeneratedScoreTargets(LevelGenerationReport report, StageConfig stage)
+        {
+            if (report.EstimatedMaxAchievableScore <= 0)
+            {
+                throw new InvalidOperationException("Runtime generation smoke failed: stage "
+                    + stage.StageIndex + " has no route-aware max score.");
+            }
+
+            if (!report.ClearRouteExists)
+            {
+                throw new InvalidOperationException("Runtime generation smoke failed: stage "
+                    + stage.StageIndex + " has no clearable route under lane movement constraints.");
+            }
+
+            if (stage.ThreeStarScore > report.EstimatedMaxAchievableScore)
+            {
+                throw new InvalidOperationException("Runtime generation smoke failed: stage "
+                    + stage.StageIndex + " has impossible three-star target " + stage.ThreeStarScore
+                    + " > " + report.EstimatedMaxAchievableScore + ".");
+            }
+
+            if (stage.EstimatedMaxAchievableScore != report.EstimatedMaxAchievableScore)
+            {
+                throw new InvalidOperationException("Runtime generation smoke failed: stage "
+                    + stage.StageIndex + " route-aware max score changed between config build and generation.");
+            }
+
+            if (stage.TwoStarScore >= stage.ThreeStarScore)
+            {
+                throw new InvalidOperationException("Runtime generation smoke failed: stage "
+                    + stage.StageIndex + " has two-star target >= three-star target.");
+            }
+
+            int expectedTwoStar = StageScoreAnalyzer.CalculateTwoStarFromThreeStar(stage.ThreeStarScore);
+            if (stage.TwoStarScore != expectedTwoStar)
+            {
+                throw new InvalidOperationException("Runtime generation smoke failed: stage "
+                    + stage.StageIndex + " two-star target is not two-thirds of three-star target.");
+            }
+
+            if (!report.PerfectOrNearPerfectRouteExists)
+            {
+                throw new InvalidOperationException("Runtime generation smoke failed: stage "
+                    + stage.StageIndex + " has no route that can reach the three-star target.");
+            }
+
+            float ratio = stage.ThreeStarScore / (float)report.EstimatedMaxAchievableScore;
+            float warningThreshold = stage.StageIndex <= 3 ? 0.90f : 0.94f;
+            if (ratio < warningThreshold)
+            {
+                Debug.LogWarning("Stage " + stage.StageIndex + " three-star ratio is low: " + ratio.ToString("P0") + ".");
+            }
+
+            if (ratio >= 0.995f)
+            {
+                Debug.LogWarning("Stage " + stage.StageIndex + " three-star target is extremely strict: " + ratio.ToString("P1") + ".");
+            }
+
+            if (report.NaiveMaxScore > 0 && report.GetRouteAwareMaxScoreRatio() < 0.80f)
+            {
+                Debug.LogWarning("Stage " + stage.StageIndex + " route-aware max is much lower than naive max: "
+                    + report.EstimatedMaxAchievableScore + "/" + report.NaiveMaxScore + ".");
+            }
+        }
+
         // Builds a compact per-stage balance summary for validator output.
         private static string BuildGenerationSummary(LevelGenerationReport report, StageConfig stage)
         {
             return "Stage " + report.StageIndex
+                + " seed=" + stage.Seed
+                + " tier=" + stage.DifficultyTier
+                + " theme=" + stage.ThemeIndex
                 + " rows=" + report.TotalRows
+                + " trackLength=" + stage.TrackLength.ToString("0")
+                + " speed=" + stage.PlayerForwardSpeed.ToString("0.00")
+                + " gates=" + report.GateRows
                 + " shardRows=" + report.ShardRows + " (" + report.GetShardRowRatio().ToString("P0") + ")"
                 + " emptyRows=" + report.EmptyRows
                 + " obstacleRows=" + report.ObstacleRows + " (" + report.GetObstacleRowRatio().ToString("P0") + ")"
@@ -517,13 +882,27 @@ namespace ColorGateRush.EditorTools
                 + " totalObstacles=" + report.TotalObstacles
                 + " avgShardsPerRow=" + report.GetAverageShardsPerRow().ToString("0.00")
                 + " matchingRows=" + report.GetMatchingShardRatio().ToString("P0")
-                + " estimatedMaxScore=" + report.MaxPossibleCorrectShardScore
+                + " totalMatchingNaive=" + report.TotalMatchingShardsByNaiveCount
+                + " multiMatchRows=" + report.RowsWithMultipleMatchingShards
+                + " oneShardRows=" + report.RowsWhereOnlyOneShardCanBeCollected
+                + " naiveMax=" + report.NaiveMaxScore
+                + " routeMax=" + report.EstimatedMaxAchievableScore
+                + " naiveMinusRoute=" + report.NaiveMinusRouteAwareMax
+                + " routeVsNaive=" + report.GetRouteAwareMaxScoreRatio().ToString("P0")
+                + " maxCollectibles=" + report.EstimatedMaxCollectibleCount
                 + " targets(★1=finish, ★2=" + stage.TwoStarScore + ", ★3=" + stage.ThreeStarScore + ")"
+                + " twoVsThree=" + (stage.TwoStarScore / (float)Mathf.Max(1, stage.ThreeStarScore)).ToString("P0")
+                + " threeStarRatio=" + (stage.ThreeStarScore / (float)Mathf.Max(1, report.EstimatedMaxAchievableScore)).ToString("P0")
+                + " mistakeAllowance=" + stage.ThreeStarMistakeAllowance
+                + " unlock=clear(★>=1)"
+                + " clearRoute=" + report.ClearRouteExists
+                + " nearPerfectRoute=" + report.PerfectOrNearPerfectRouteExists
                 + " rowsWithoutMatching=" + report.RowsWithoutMatchingShard
                 + " repairedUnsafeRows=" + report.UnsafeRowsRepaired
                 + " prevented(allOff=" + report.AllOffColorRowsPrevented
                 + ", allObstacle=" + report.AllObstacleRowsPrevented
-                + ", mixed=" + report.MixedUnsafeRowsPrevented + ")";
+                + ", mixed=" + report.MixedUnsafeRowsPrevented + ")"
+                + " warnings=" + report.Warnings.Count;
         }
 
         // Emits warnings for Stage 1 balance drift without failing valid fair generation.
@@ -619,9 +998,11 @@ namespace ColorGateRush.EditorTools
             string[] textureGuids = AssetDatabase.FindAssets("t:Texture2D", new[] { "Assets/_Project" });
             string[] audioGuids = AssetDatabase.FindAssets("t:AudioClip", new[] { "Assets/_Project" });
             string[] modelGuids = AssetDatabase.FindAssets("t:Model", new[] { "Assets/_Project" });
-            if (textureGuids.Length > 0 || audioGuids.Length > 0 || modelGuids.Length > 0)
+            string[] fontGuids = AssetDatabase.FindAssets("t:Font", new[] { "Assets/_Project" });
+            string[] prefabGuids = AssetDatabase.FindAssets("t:Prefab", new[] { "Assets/_Project" });
+            if (textureGuids.Length > 0 || audioGuids.Length > 0 || modelGuids.Length > 0 || fontGuids.Length > 0 || prefabGuids.Length > 0)
             {
-                throw new InvalidOperationException("Imported Texture2D, AudioClip, or Model assets found under Assets/_Project. MVP assets must be procedural.");
+                throw new InvalidOperationException("Imported Texture2D, AudioClip, Model, Font, or Prefab assets found under Assets/_Project. Release assets must be procedural/runtime generated.");
             }
         }
 
@@ -689,6 +1070,8 @@ namespace ColorGateRush.EditorTools
             WarnAboutAssetsOutsideProject("t:Texture2D", "texture assets");
             WarnAboutAssetsOutsideProject("t:AudioClip", "audio assets");
             WarnAboutAssetsOutsideProject("t:Model", "model assets");
+            WarnAboutAssetsOutsideProject("t:Font", "font assets");
+            WarnAboutAssetsOutsideProject("t:Prefab", "prefab assets");
             WarnAboutAssetsOutsideProject("t:MonoScript", "scripts");
         }
 

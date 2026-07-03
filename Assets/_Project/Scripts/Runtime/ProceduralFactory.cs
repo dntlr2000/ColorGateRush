@@ -11,36 +11,90 @@ namespace ColorGateRush
         // Returns a cached solid material for a gameplay color.
         public static Material ColorMaterial(ColorId colorId)
         {
-            string assistSuffix = GameSettings.ColorAssistEnabled ? "_assist" : "_default";
-            return SolidMaterial("color_" + colorId + assistSuffix, GameConstants.ToUnityColor(colorId));
+            return SolidMaterial("color_" + colorId + ThemeSuffix(), GameConstants.ToUnityColor(colorId), VisualTheme.Current().ShardGlowAlpha);
+        }
+
+        // Returns a translucent material for the runner's ground accent.
+        public static Material PlayerAccentMaterial(ColorId colorId)
+        {
+            return TransparentMaterial("player_accent_" + colorId + ThemeSuffix(), GameConstants.ToUnityColor(colorId), 0.42f);
         }
 
         // Returns the cached dark material used by generated track slabs.
         public static Material TrackMaterial()
         {
-            return SolidMaterial("track", new Color(0.05f, 0.07f, 0.12f));
+            return SolidMaterial("track" + ThemeSuffix(), VisualTheme.Current().TrackBaseColor);
         }
 
         // Returns the cached material used by lane guide strips.
         public static Material LaneStripMaterial()
         {
-            return SolidMaterial("lane_strip", new Color(0.13f, 0.18f, 0.28f));
+            return SolidMaterial("lane_strip" + ThemeSuffix(), VisualTheme.Current().TrackAccentColor, 0.12f);
+        }
+
+        // Returns the cached material used by raised track side rails.
+        public static Material TrackEdgeMaterial()
+        {
+            return SolidMaterial("track_edge" + ThemeSuffix(), VisualTheme.Current().TrackEdgeColor);
+        }
+
+        // Returns the cached material used by rhythmic track accent stripes.
+        public static Material TrackAccentMaterial()
+        {
+            return TransparentMaterial("track_accent" + ThemeSuffix(), VisualTheme.Current().TrackAccentColor, 0.56f);
+        }
+
+        // Returns the cached material used by procedural backdrop panels.
+        public static Material BackdropTopMaterial()
+        {
+            return TransparentMaterial("backdrop_top" + ThemeSuffix(), VisualTheme.Current().BackdropTopColor, VisualTheme.Current().BackdropTopColor.a);
+        }
+
+        // Returns the cached material used by low backdrop panels.
+        public static Material BackdropBottomMaterial()
+        {
+            return TransparentMaterial("backdrop_bottom" + ThemeSuffix(), VisualTheme.Current().BackdropBottomColor, VisualTheme.Current().BackdropBottomColor.a);
+        }
+
+        // Returns the cached material used by side panels outside the lane track.
+        public static Material SidePanelMaterial()
+        {
+            return TransparentMaterial("side_panel" + ThemeSuffix(), VisualTheme.Current().SidePanelColor, VisualTheme.Current().SidePanelColor.a);
         }
 
         // Returns the cached material used by obstacle blocks.
         public static Material ObstacleMaterial()
         {
-            return SolidMaterial("obstacle", new Color(1.0f, 0.26f, 0.12f));
+            return SolidMaterial("obstacle" + ThemeSuffix(), VisualTheme.Current().ObstacleColor, 0.08f);
+        }
+
+        // Returns the cached material used by warning stripes on obstacle geometry.
+        public static Material ObstacleWarningMaterial()
+        {
+            return SolidMaterial("obstacle_warning" + ThemeSuffix(), VisualTheme.Current().ObstacleWarningColor, 0.18f);
+        }
+
+        // Returns the cached translucent material used by positive gate panels.
+        public static Material GatePanelMaterial(ColorId colorId)
+        {
+            Color color = Color.Lerp(GameConstants.ToUnityColor(colorId), VisualTheme.Current().GatePanelColor, 0.25f);
+            return TransparentMaterial("gate_panel_" + colorId + ThemeSuffix(), color, VisualTheme.Current().GatePanelColor.a);
         }
 
         // Returns the cached material used by finish-line geometry.
         public static Material FinishMaterial()
         {
-            return SolidMaterial("finish", new Color(1.0f, 0.95f, 0.62f));
+            return SolidMaterial("finish" + ThemeSuffix(), VisualTheme.Current().FinishColor, 0.16f);
+        }
+
+        // Returns the cached material used by dark finish checker tiles.
+        public static Material FinishDarkMaterial()
+        {
+            return SolidMaterial("finish_dark" + ThemeSuffix(), VisualTheme.Current().TrackEdgeColor);
         }
 
         // Creates or returns a cached opaque material with shader fallback support.
-        public static Material SolidMaterial(string key, Color color)
+        public static Material SolidMaterial(string key, Color color, float emissionStrength = 0f)
         {
             if (MaterialCache.TryGetValue(key, out Material cached))
             {
@@ -50,6 +104,7 @@ namespace ColorGateRush
             Material material = new Material(FindDefaultShader());
             material.name = "M_" + key;
             SetMaterialColor(material, color);
+            ConfigureLitSurface(material, color, emissionStrength);
             MaterialCache[key] = material;
             return material;
         }
@@ -104,21 +159,200 @@ namespace ColorGateRush
             return go;
         }
 
-        // Attaches a color-assist symbol above a world object using built-in TextMesh.
-        public static TextMesh AttachColorSymbol(Transform parent, ColorId colorId, Vector3 localPosition, float size)
+        // Creates a primitive intended only for visuals and disables its collider immediately.
+        public static GameObject VisualPrimitive(
+            PrimitiveType type,
+            string name,
+            Transform parent,
+            Vector3 position,
+            Vector3 scale,
+            Material material)
         {
-            GameObject go = new GameObject("ColorSymbol_" + colorId);
-            go.transform.SetParent(parent, false);
-            go.transform.localPosition = localPosition;
-            go.transform.localRotation = Quaternion.Euler(65f, 0f, 0f);
-            TextMesh text = go.AddComponent<TextMesh>();
-            text.text = GameConstants.ColorSymbol(colorId);
-            text.anchor = TextAnchor.MiddleCenter;
-            text.alignment = TextAlignment.Center;
-            text.characterSize = GameSettings.ColorAssistEnabled ? size * 1.25f : size;
-            text.fontSize = GameSettings.ColorAssistEnabled ? 72 : 56;
-            text.color = GameSettings.ColorAssistEnabled ? Color.white : Color.black;
-            return text;
+            GameObject go = Primitive(type, name, parent, position, scale, material, isTrigger: false);
+            DisableCollider(go);
+            return go;
+        }
+
+        // Creates a collectible shard whose silhouette is driven by the shared color visual profile.
+        public static GameObject CreateShardVisual(Transform parent, string name, Vector3 position, ColorId colorId)
+        {
+            GameObject shard = CreateColorShape(parent, name, position, colorId, 0.58f, colliderEnabled: true, isTrigger: true);
+            AttachShardGlow(shard, colorId);
+            return shard;
+        }
+
+        // Creates a non-colliding shape marker for gates and other color cues.
+        public static GameObject CreateColorShapeMarker(Transform parent, string name, Vector3 position, ColorId colorId, float size)
+        {
+            return CreateColorShape(parent, name, position, colorId, size, colliderEnabled: false, isTrigger: false);
+        }
+
+        // Creates a translucent ground accent that follows the player without adding collision.
+        public static GameObject CreatePlayerAccent(Transform parent, ColorId colorId, Vector3 position)
+        {
+            GameObject accent = CreateColorShape(
+                parent,
+                "PlayerColorAccent",
+                position,
+                colorId,
+                0.44f,
+                colliderEnabled: false,
+                isTrigger: false);
+            ApplyPlayerAccentMaterial(accent, colorId);
+
+            Collider collider = accent.GetComponent<Collider>();
+            if (collider != null)
+            {
+                collider.enabled = false;
+            }
+
+            return accent;
+        }
+
+        // Disables a primitive collider so decorative objects cannot affect gameplay.
+        public static void DisableCollider(GameObject target)
+        {
+            if (target == null)
+            {
+                return;
+            }
+
+            Collider collider = target.GetComponent<Collider>();
+            if (collider != null)
+            {
+                collider.enabled = false;
+            }
+        }
+
+        // Applies the active color material to an already-created visual object.
+        public static void ApplyColorMaterial(GameObject target, ColorId colorId)
+        {
+            if (target == null)
+            {
+                return;
+            }
+
+            Renderer renderer = target.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                renderer.sharedMaterial = ColorMaterial(colorId);
+            }
+        }
+
+        // Applies the active translucent player accent material to an already-created object.
+        public static void ApplyPlayerAccentMaterial(GameObject target, ColorId colorId)
+        {
+            if (target == null)
+            {
+                return;
+            }
+
+            Renderer renderer = target.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                renderer.sharedMaterial = PlayerAccentMaterial(colorId);
+            }
+        }
+
+        // Builds the primitive, scale, and rotation for one color-specific shape.
+        private static GameObject CreateColorShape(
+            Transform parent,
+            string name,
+            Vector3 position,
+            ColorId colorId,
+            float size,
+            bool colliderEnabled,
+            bool isTrigger)
+        {
+            ColorVisualProfile profile = GameConstants.GetVisualProfile(colorId);
+            PrimitiveType primitiveType = ShapePrimitive(profile.ShapeType);
+            GameObject shape = Primitive(
+                primitiveType,
+                name,
+                parent,
+                position,
+                ShapeScale(profile.ShapeType, size),
+                ColorMaterial(colorId),
+                isTrigger);
+            shape.transform.rotation = ShapeRotation(profile.ShapeType);
+
+            Collider collider = shape.GetComponent<Collider>();
+            if (collider != null)
+            {
+                collider.enabled = colliderEnabled;
+                collider.isTrigger = isTrigger;
+            }
+
+            return shape;
+        }
+
+        // Adds a soft non-colliding glow shell to make collectibles feel more rewarding.
+        private static void AttachShardGlow(GameObject shard, ColorId colorId)
+        {
+            if (shard == null)
+            {
+                return;
+            }
+
+            GameObject glow = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            glow.name = "ShardGlow";
+            glow.transform.SetParent(shard.transform, false);
+            glow.transform.localPosition = Vector3.zero;
+            glow.transform.localRotation = Quaternion.identity;
+            glow.transform.localScale = Vector3.one * 1.32f;
+
+            Renderer renderer = glow.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                renderer.sharedMaterial = TransparentMaterial("shard_glow_" + colorId + ThemeSuffix(), GameConstants.ToUnityColor(colorId), VisualTheme.Current().ShardGlowAlpha);
+            }
+
+            DisableCollider(glow);
+        }
+
+        // Converts a color shape profile into a Unity primitive type.
+        private static PrimitiveType ShapePrimitive(ColorShapeType shapeType)
+        {
+            switch (shapeType)
+            {
+                case ColorShapeType.Cube:
+                case ColorShapeType.Diamond:
+                    return PrimitiveType.Cube;
+                case ColorShapeType.Capsule:
+                    return PrimitiveType.Capsule;
+                default:
+                    return PrimitiveType.Sphere;
+            }
+        }
+
+        // Returns a readable scale for each primitive silhouette.
+        private static Vector3 ShapeScale(ColorShapeType shapeType, float size)
+        {
+            switch (shapeType)
+            {
+                case ColorShapeType.Cube:
+                    return Vector3.one * size;
+                case ColorShapeType.Capsule:
+                    return new Vector3(size * 0.68f, size * 0.62f, size * 0.68f);
+                case ColorShapeType.Diamond:
+                    return Vector3.one * (size * 0.9f);
+                default:
+                    return Vector3.one * size;
+            }
+        }
+
+        // Returns a stable display rotation so non-spherical shards have a clear silhouette.
+        private static Quaternion ShapeRotation(ColorShapeType shapeType)
+        {
+            switch (shapeType)
+            {
+                case ColorShapeType.Diamond:
+                    return Quaternion.Euler(0f, 45f, 45f);
+                case ColorShapeType.Capsule:
+                    return Quaternion.Euler(0f, 0f, 90f);
+                default:
+                    return Quaternion.identity;
+            }
         }
 
         // Shows pooled floating score or feedback text near a gameplay event.
@@ -166,26 +400,29 @@ namespace ColorGateRush
         // Emits the short burst used for successful shard collection.
         public static void CollectBurst(Vector3 position, Color color)
         {
-            Burst(position, color, 18, 0.16f, 0.35f);
+            Burst(position, color, ScaledParticleCount(18), 0.16f, 0.35f);
+            RingBurst(position + Vector3.up * 0.08f, color, ScaledParticleCount(10), 0.08f, 0.28f, 0.38f);
         }
 
         // Emits a vertical ring-like burst used when the runner crosses a color gate.
         public static void GateBurst(Vector3 position, Color color)
         {
-            RingBurst(position, color, 28, 0.18f, 0.45f, 0.75f);
+            RingBurst(position, color, ScaledParticleCount(30), 0.18f, 0.45f, 0.82f);
+            Burst(position + Vector3.up * 0.2f, color, ScaledParticleCount(12), 0.10f, 0.32f);
         }
 
         // Emits a larger white and gold burst used when the runner finishes a run.
         public static void FinishBurst(Vector3 position)
         {
-            Burst(position, Color.white, 36, 0.28f, 0.65f);
-            RingBurst(position + Vector3.up * 0.15f, GameConstants.ToUnityColor(ColorId.Yellow), 42, 0.22f, 0.7f, 1.1f);
+            Burst(position, VisualTheme.Current().FinishColor, ScaledParticleCount(42), 0.28f, 0.65f);
+            RingBurst(position + Vector3.up * 0.15f, GameConstants.ToUnityColor(ColorId.Yellow), ScaledParticleCount(46), 0.22f, 0.7f, 1.1f);
         }
 
         // Emits the red burst used for wrong shards and obstacle failures.
         public static void FailBurst(Vector3 position)
         {
-            Burst(position, Color.red, 32, 0.24f, 0.45f);
+            Burst(position, VisualTheme.Current().ObstacleColor, ScaledParticleCount(34), 0.24f, 0.45f);
+            RingBurst(position, VisualTheme.Current().ObstacleWarningColor, ScaledParticleCount(16), 0.12f, 0.32f, 0.55f);
         }
 
         // Emits a spherical one-shot particle burst at the requested world position.
@@ -211,6 +448,12 @@ namespace ColorGateRush
 
             ps.Emit(count);
             Object.Destroy(go, lifetime + 0.3f);
+        }
+
+        // Scales one-shot particle counts with the active theme while keeping mobile-safe caps.
+        private static int ScaledParticleCount(int baseCount)
+        {
+            return Mathf.Clamp(Mathf.RoundToInt(baseCount * VisualTheme.Current().VfxIntensity), 4, 64);
         }
 
         // Emits a circle-shaped burst for gate and finish feedback.
@@ -275,6 +518,38 @@ namespace ColorGateRush
             {
                 material.SetColor("_Color", color);
             }
+        }
+
+        // Applies safe smoothness/emission properties when the active shader supports them.
+        private static void ConfigureLitSurface(Material material, Color baseColor, float emissionStrength)
+        {
+            if (material.HasProperty("_Smoothness"))
+            {
+                material.SetFloat("_Smoothness", 0.68f);
+            }
+
+            if (material.HasProperty("_Metallic"))
+            {
+                material.SetFloat("_Metallic", 0f);
+            }
+
+            if (emissionStrength <= 0f)
+            {
+                return;
+            }
+
+            Color emissionColor = baseColor * emissionStrength;
+            if (material.HasProperty("_EmissionColor"))
+            {
+                material.SetColor("_EmissionColor", emissionColor);
+                material.EnableKeyword("_EMISSION");
+            }
+        }
+
+        // Returns a stable cache suffix for the currently active visual theme mode.
+        private static string ThemeSuffix()
+        {
+            return "_theme" + VisualTheme.ActiveThemeIndex + (GameSettings.ColorAssistEnabled ? "_assist" : "_default");
         }
 
         // Enables alpha blending flags for URP and built-in Standard compatible materials.

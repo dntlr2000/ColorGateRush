@@ -148,9 +148,8 @@ namespace ColorGateRush
             _state = GameState.Playing;
             _runner = _levelGenerator.ClearAndGenerate(this, stage);
             _ui.ShowPlayingHud(stage, _score, _combo, _runner.CurrentColor, seed);
-            _ui.ShowMessage("Swipe / A-D to switch lanes");
+            _ui.ShowStageStartHint(stage);
             ShowTutorialIfNeeded(stage);
-            Invoke(nameof(ClearMessage), 1.2f);
         }
 
         // Applies color-match scoring and feedback when the runner enters a shard trigger.
@@ -200,10 +199,10 @@ namespace ColorGateRush
             runner.SetColor(gate.TargetColor);
             _score += GameConstants.GateScore;
             ProceduralFactory.GateBurst(runner.transform.position + Vector3.up * 0.8f, GameConstants.ToUnityColor(gate.TargetColor));
-            ProceduralFactory.FloatingText(runner.transform.position + Vector3.up * 1.3f, "색상 변경! " + GameConstants.ColorSymbol(gate.TargetColor), GameConstants.ToUnityColor(gate.TargetColor));
+            ProceduralFactory.FloatingText(runner.transform.position + Vector3.up * 1.3f, "색상 변경! " + GameConstants.ShapeName(gate.TargetColor), GameConstants.ToUnityColor(gate.TargetColor));
             _audio.PlayGate();
             UpdateHud();
-            _ui.ShowMessage("색상 변경! 이제 " + GameConstants.ColorName(gate.TargetColor) + " " + GameConstants.ColorSymbol(gate.TargetColor));
+            _ui.ShowMessage("색상 변경! 이제 " + GameConstants.GetVisualProfile(gate.TargetColor).HudLabel);
         }
 
         // Ends the current run as failed when the runner hits an obstacle.
@@ -231,7 +230,7 @@ namespace ColorGateRush
 
         }
 
-        // Applies the finish multiplier and ends the run when the finish trigger is reached.
+        // Ends the run when the finish trigger is reached and preserves the HUD score for star rating.
         public void HandleFinish(FinishLine finishLine, LaneRunnerController runner)
         {
             if (!IsRunning)
@@ -241,8 +240,6 @@ namespace ColorGateRush
 
             _state = GameState.Completed;
             RestoreTimeScale();
-            int multiplier = Mathf.Clamp(1 + Mathf.FloorToInt(_score / 250f), 1, GameConstants.FinishMultiplierCap);
-            _score *= multiplier;
             _combo = 0;
 
             Vector3 burstPosition = runner != null ? runner.transform.position + Vector3.up : transform.position;
@@ -448,7 +445,7 @@ namespace ColorGateRush
         {
             if (IsRunning)
             {
-                _ui.ShowMessage(string.Empty);
+                _ui.ClearMessage();
             }
         }
 

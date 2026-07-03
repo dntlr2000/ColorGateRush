@@ -29,7 +29,7 @@ namespace ColorGateRush.EditorTools
             Camera camera = cameraGo.AddComponent<Camera>();
             camera.tag = "MainCamera";
             camera.fieldOfView = 58f;
-            camera.backgroundColor = new Color(0.055f, 0.07f, 0.12f);
+            camera.backgroundColor = VisualTheme.Current().CameraBackgroundColor;
             EnsureAudioListener(cameraGo);
             cameraGo.AddComponent<CameraFollow>();
             cameraGo.transform.position = new Vector3(0f, 8.5f, -9.5f);
@@ -38,8 +38,10 @@ namespace ColorGateRush.EditorTools
             GameObject lightGo = new GameObject("Directional Light");
             Light light = lightGo.AddComponent<Light>();
             light.type = LightType.Directional;
-            light.intensity = 1.25f;
+            light.color = VisualTheme.Current().DirectionalLightColor;
+            light.intensity = VisualTheme.Current().DirectionalLightIntensity;
             lightGo.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
+            ApplyRenderSettings();
 
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
             EditorSceneManager.SaveScene(scene, ScenePath);
@@ -47,6 +49,33 @@ namespace ColorGateRush.EditorTools
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             Debug.Log("Color Gate Rush bootstrap complete: " + ScenePath);
+        }
+
+        [MenuItem("Tools/Color Gate Rush/Apply Visual Theme")]
+        // Applies the current code-defined visual theme to the open scene without creating external assets.
+        public static void ApplyVisualTheme()
+        {
+            Camera camera = Camera.main;
+            if (camera != null)
+            {
+                camera.backgroundColor = VisualTheme.Current().CameraBackgroundColor;
+                camera.fieldOfView = 58f;
+            }
+
+            Light light = FindFirstDirectionalLight();
+            if (light == null)
+            {
+                GameObject lightGo = new GameObject("Directional Light");
+                light = lightGo.AddComponent<Light>();
+                light.type = LightType.Directional;
+                lightGo.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
+            }
+
+            light.color = VisualTheme.Current().DirectionalLightColor;
+            light.intensity = VisualTheme.Current().DirectionalLightIntensity;
+            ApplyRenderSettings();
+            EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
+            Debug.Log("Color Gate Rush visual theme applied to current scene.");
         }
 
         // Creates the folder layout expected by the procedural game scripts.
@@ -77,6 +106,31 @@ namespace ColorGateRush.EditorTools
             {
                 cameraGo.AddComponent<AudioListener>();
             }
+        }
+
+        // Applies render settings that act as the safe fallback when URP Volume is unavailable.
+        private static void ApplyRenderSettings()
+        {
+            RenderSettings.skybox = null;
+            RenderSettings.fog = true;
+            RenderSettings.fogColor = VisualTheme.Current().FogColor;
+            RenderSettings.fogDensity = 0.010f;
+            RenderSettings.ambientLight = VisualTheme.Current().AmbientColor;
+        }
+
+        // Finds the first directional light in the active scene.
+        private static Light FindFirstDirectionalLight()
+        {
+            Light[] lights = UnityEngine.Object.FindObjectsByType<Light>(FindObjectsSortMode.None);
+            for (int i = 0; i < lights.Length; i++)
+            {
+                if (lights[i] != null && lights[i].type == LightType.Directional)
+                {
+                    return lights[i];
+                }
+            }
+
+            return null;
         }
     }
 }

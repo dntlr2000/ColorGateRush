@@ -2,7 +2,7 @@
 
 ## 1. Concept
 
-**Color Gate Rush**는 30~45초 세션을 목표로 하는 3-lane hyper-casual runner입니다. 플레이어는 자동 전진하는 컬러 볼을 좌우로 움직이며 같은 색 샤드를 모읍니다. 중간중간 컬러 게이트가 플레이어 색을 바꾸므로, 다음 수집 대상도 바뀝니다. 장애물에 부딪히면 실패하거나 점수가 크게 감소하고, 피니시를 통과하면 점수 배수가 적용됩니다.
+**Color Gate Rush**는 30~45초 세션을 목표로 하는 3-lane hyper-casual runner입니다. 플레이어는 자동 전진하는 컬러 볼을 좌우로 움직이며 같은 색 샤드를 모읍니다. 중간중간 컬러 게이트가 플레이어 색을 바꾸므로, 다음 수집 대상도 바뀝니다. 장애물에 부딪히면 실패하거나 점수가 크게 감소하고, 피니시를 통과하면 현재 점수로 별점이 확정됩니다.
 
 ## 2. Why this game is Codex-automatable
 
@@ -22,9 +22,9 @@
 6. Player can pause during Playing and resume the same run.
 7. Same-color shard increases score and combo with floating score feedback.
 8. Wrong-color shard breaks combo or subtracts score.
-9. Gate changes player color and current target symbol.
+9. Gate changes player color and current target shape.
 10. Obstacle causes fail or heavy penalty.
-11. Finish line converts score into multiplier.
+11. Finish line clears the stage and locks in the current score.
 12. Result is shown until the player explicitly chooses Retry, Stage Select, Main Menu, or Next Stage.
 
 ## 4. Controls
@@ -42,13 +42,14 @@
 |---|---|---|---|
 | Player | Sphere | Auto-run, lane switch, color state | Primitive Sphere |
 | Track | Long Cube segments | Visual ground | Primitive Cube |
-| Shard | Small Sphere | Score if same color | Primitive Sphere |
+| Track polish | Rails, separators, rhythm stripes | Lane readability and forward rhythm | Visual-only Primitive Cubes |
+| Shard | Color-specific primitive shape | Score if same color/shape | Primitive Sphere/Cube/Capsule |
 | Gate | Transparent Cube trigger + arch | Changes player color | Primitive Cubes |
-| Obstacle | Cube/Wall | Fail or penalty | Primitive Cube |
-| Finish | Trigger plane + arch | Ends run | Primitive Cubes |
+| Obstacle | Warning block + stripe/spike accents | Fail or penalty | Primitive Cubes |
+| Finish | Trigger plane + arch/checker strip | Ends run | Primitive Cubes |
 | Particles | ParticleSystem | Collect/gate/fail/finish feedback | Built-in ParticleSystem |
 | Audio | Runtime sine waves | Collect/gate/hit/finish | `AudioClip.Create` |
-| Symbols | TextMesh | Color-assist shape symbols | Built-in TextMesh |
+| Player accent | Color-specific primitive shape | Shows current target color/shape without text overlay | Primitive Sphere/Cube/Capsule |
 
 ## 6. Scoring
 
@@ -56,23 +57,24 @@
 - Combo increases every successful shard, capped at 10.
 - Wrong-color shard: -15 and combo reset.
 - Gate: +5 feedback score, changes player color.
-- Finish multiplier: `1 + floor(score / 250)`, capped at 10.
+- Finish: clears the stage; star rating uses the current score shown in the HUD.
 - Combo is reset by wrong-color shards and obstacles.
 
 ## 6.1 Feedback and Accessibility
 
 - Successful collection uses particles, procedural SFX, and floating score text.
 - Wrong-color shards and obstacles use red fail particles, buzz SFX, and clear HUD messages.
-- Gates display a short color-change message and target symbol.
-- Every gameplay color has a paired symbol: Cyan ●, Magenta ■, Yellow ◆, Lime ▲.
+- Gates display a short color-change message and a small primitive target marker.
+- Every gameplay color has a paired shape: Cyan 구슬, Magenta 큐브, Yellow 캡슐, Lime 다이아.
+- Shards, player accent, and the HUD use the same color/shape source of truth; no black TextMesh symbols are placed above shards or the player.
 - Settings include Sound, Camera Shake, and Color Assist toggles saved with `CGR_` PlayerPrefs keys.
 
 ## 7. Level Generation Rules
 
 - 3 lanes: x = -2.2, 0, +2.2.
-- Track length: 180–220 units.
-- Shards every 5–7 z units.
-- Gate every 28–36 z units.
+- Track length: about 160–370 units across the 30-stage campaign.
+- Shards/obstacles are arranged in deterministic decision rows, with row count rising by stage.
+- Gate spacing starts wide and tightens toward advanced stages, about 62 down to 30 z units.
 - Obstacle every 12–20 z units, never directly after a gate.
 - Shards and obstacles are generated on exact shared row z positions.
 - Matching shards are not forced on every row.
@@ -83,11 +85,19 @@
 
 ## 8. Visual Style
 
-- Theme: neon candy, clean mobile ad prototype.
-- Background: flat gradient-like sky color through Camera background and fog.
-- Track: dark blue/charcoal base with lane strips.
+- Theme: clean candy neon, soft sci-fi, minimal arcade.
+- `VisualTheme` is the source of truth for background, fog, track, obstacle, finish, HUD, and VFX colors.
+- Stages cycle through five code-defined theme variations for background, track accent, HUD accent, gate, and finish tone.
+- Background: softened blue-violet Camera color, fog, and procedural backdrop/side panels instead of the default Unity skybox.
+- Track: darker blue/charcoal base with side rails, lane separators, edge glow, and rhythm stripes for object contrast.
 - Colors: cyan, magenta, yellow, lime.
-- Shapes: rounded impression through spheres and scaled cubes.
+- Shapes: each collectible color has a distinct primitive silhouette.
+- Shards: glossy/emissive material, soft glow shell, subtle bob/spin, and short collect burst.
+- Obstacles: danger red blocks with warning-yellow stripes and spike silhouettes.
+- Gates: positive transparent color panels, arch frames, target shape marker, and approach/exit cue strips.
+- Finish: gold arch, primitive checker strip, and clear burst.
+- HUD: theme-driven translucent panels, shadowed text, and accent buttons for readability.
+- Post-processing: do not require external assets or URP-specific compile dependencies; camera background, fog, ambient light, and directional light are the safe fallback tone pass.
 - Camera: third-person elevated follow, portrait friendly.
 
 ## 9. MVP Scope
@@ -121,15 +131,24 @@
 ## 10. Stage Progression
 
 - Target Unity: Unity 6 / 6000.x.
-- MVP includes 10 deterministic stages generated from C# `StageConfig` data.
+- MVP content now includes 30 deterministic stages generated from C# `StageConfig` data.
 - Stage 1 is unlocked by default.
 - Stage 1 teaches collection first: obstacles are rare, shard density is high, and gates are spaced out.
 - Stage 2-3 introduce slightly more off-color shards and obstacles without a difficulty spike.
-- Stage 4+ increases gates, speed, length, and obstacle density gradually.
+- Stage 4-10 increase gates, speed, length, and obstacle density gradually.
+- Stage 11-20 are the middle tier with longer tracks, faster speed, more off-color pressure, and shorter gate intervals.
+- Stage 21-30 are advanced stages with the shortest gate spacing and strictest 3-star margins.
 - Clearing a stage awards at least 1 star.
 - Score targets award 2 or 3 stars.
-- The playing HUD shows `★1: 피니시`, plus the current stage's 2-star and 3-star score targets before the finish.
-- Only a 3-star clear unlocks the next stage.
+- `StageScoreAnalyzer` estimates a route-aware maximum score from generated row/lane data, combo, wrong-color penalties, gate score, and row-spacing-based lane movement.
+- A row is one decision; even if multiple matching shards appear in that row, the analyzer counts at most one lane choice and at most one shard pickup.
+- Balance reports compare naive matching-shard score against route-aware max score so impossible 3-star targets are caught.
+- 2-star targets are always the rounded-up two-thirds point of the 3-star target.
+- 3-star targets are roughly 93-98% of the route-aware maximum score, clamped below the estimated maximum.
+- Stage 1-3 allow about two mistakes for 3 stars; later stages allow only one or nearly none in practice.
+- The playing HUD shows `★1: 피니시`, 2-star and 3-star targets, and the remaining score needed for 3 stars before the finish.
+- Any clear with at least 1 star unlocks the next stage.
+- 3 stars remain a near-perfect-play challenge target, not the unlock gate.
 - Pausing does not calculate stars, save progress, or unlock stages.
 - Automatic restart is disabled; transitions require explicit buttons or keyboard shortcuts.
 - Settings can reset only Color Gate Rush progress keys.
@@ -145,6 +164,7 @@
 ## 11. Fair Generation Rules
 
 - Shards and obstacles are placed in three-lane rows with one shared row z coordinate.
+- Each row is one lane choice for scoring analysis; route-aware max never assumes multiple same-row shards can all be collected.
 - Matching shards are probability-driven and are not required on every row.
 - Shard density is still targeted so early rows do not feel empty or punishment-led.
 - Full-width mandatory gates update the expected player color for later shard rows.

@@ -7,7 +7,7 @@ namespace ColorGateRush
         public const string UnlockedStageKey = "CGR_UnlockedStage";
         public const string StageStarsKeyPrefix = "CGR_StageStars_";
         public const string SelectedStageKey = "CGR_SelectedStage";
-        public const int TotalStageCount = 10;
+        public const int TotalStageCount = 30;
 
         private readonly StageConfig[] _stages;
         private int _unlockedStage;
@@ -21,8 +21,10 @@ namespace ColorGateRush
         public StageManager()
         {
             _stages = BuildStageConfigs();
-            _unlockedStage = Mathf.Clamp(PlayerPrefs.GetInt(UnlockedStageKey, 1), 1, TotalStageCount);
+            _unlockedStage = NormalizeProgressForCurrentRules();
             _selectedStage = Mathf.Clamp(PlayerPrefs.GetInt(SelectedStageKey, _unlockedStage), 1, _unlockedStage);
+            PlayerPrefs.SetInt(SelectedStageKey, _selectedStage);
+            PlayerPrefs.Save();
         }
 
         // Returns the deterministic config for the requested stage.
@@ -78,7 +80,7 @@ namespace ColorGateRush
             return 1;
         }
 
-        // Saves a cleared stage result and unlocks the next stage only on three stars.
+        // Saves a cleared stage result and unlocks the next stage on any clear with at least one star.
         public StageResult SaveStageResult(StageConfig stage, int score)
         {
             int stars = CalculateStars(stage, score, cleared: true);
@@ -92,7 +94,7 @@ namespace ColorGateRush
 
             bool hasNext = stage.StageIndex < TotalStageCount;
             bool nextUnlocked = false;
-            if (stars == 3 && hasNext && _unlockedStage < stage.StageIndex + 1)
+            if (stars >= 1 && hasNext && _unlockedStage < stage.StageIndex + 1)
             {
                 _unlockedStage = stage.StageIndex + 1;
                 PlayerPrefs.SetInt(UnlockedStageKey, _unlockedStage);
@@ -113,50 +115,131 @@ namespace ColorGateRush
         // Reports whether a star result is eligible to unlock the next stage.
         public bool WouldUnlockNextStage(StageConfig stage, int stars)
         {
-            return stars == 3 && stage.StageIndex < TotalStageCount;
+            return stars >= 1 && stage.StageIndex < TotalStageCount;
         }
 
-        // Builds ten progressively harder procedural stages without external data files.
+        // Normalizes saved progress so old data follows the current one-star unlock rule without reducing progress.
+        private static int NormalizeProgressForCurrentRules()
+        {
+            int savedUnlocked = Mathf.Clamp(PlayerPrefs.GetInt(UnlockedStageKey, 1), 1, TotalStageCount);
+            int bestStarsUnlocked = RecalculateUnlockedStageFromBestStars();
+            int normalized = Mathf.Clamp(Mathf.Max(savedUnlocked, bestStarsUnlocked), 1, TotalStageCount);
+            if (normalized != savedUnlocked)
+            {
+                PlayerPrefs.SetInt(UnlockedStageKey, normalized);
+            }
+
+            return normalized;
+        }
+
+        // Recalculates sequential unlock progress from existing best-star records under the one-star clear rule.
+        private static int RecalculateUnlockedStageFromBestStars()
+        {
+            int unlockedStage = 1;
+            for (int stage = 1; stage < TotalStageCount; stage++)
+            {
+                int stars = Mathf.Clamp(PlayerPrefs.GetInt(StageStarsKeyPrefix + stage, 0), 0, 3);
+                if (stars < 1)
+                {
+                    break;
+                }
+
+                unlockedStage = stage + 1;
+            }
+
+            return unlockedStage;
+        }
+
+        // Builds thirty progressively harder procedural stages without external data files.
         private static StageConfig[] BuildStageConfigs()
         {
             StageConfig[] stages = new StageConfig[TotalStageCount];
             for (int i = 0; i < stages.Length; i++)
             {
                 int stage = i + 1;
-                int shardRows = 18 + stage * 2;
-                float trackLength = 150f + stage * 8f;
+                int shardRows = 22 + stage * 2;
+                float trackLength = 156f + stage * 7f;
                 float obstacleChance = GetObstacleLaneChance(stage);
                 float matchingShardChance = GetMatchingShardLaneChance(stage);
                 float offColorShardChance = GetOffColorShardLaneChance(stage);
                 float safeEmptyLaneChance = GetSafeEmptyLaneChance(stage);
                 float gateInterval = GetGateInterval(stage);
-                int colorCount = Mathf.Clamp(3 + stage / 4, 3, 4);
-                float recoveryBoost = stage <= 2 ? 1.15f : (stage == 3 ? 1.12f : 1.08f);
-                int baselineScore = Mathf.RoundToInt(shardRows * GameConstants.LaneCount * matchingShardChance * GameConstants.SameColorShardScore * recoveryBoost + stage * 10f);
-                baselineScore = Mathf.Max(GameConstants.SameColorShardScore * 6, baselineScore);
-                int twoStar = Mathf.RoundToInt(baselineScore * 0.65f);
-                int threeStar = Mathf.RoundToInt(baselineScore * 0.90f);
-                float speed = 7.4f + stage * 0.35f;
-                float laneMove = 10.5f + stage * 0.25f;
-                stages[i] = new StageConfig(stage, 12345 + stage * 97, trackLength, shardRows, obstacleChance, matchingShardChance, offColorShardChance, safeEmptyLaneChance, gateInterval, colorCount, twoStar, threeStar, speed, laneMove);
+                int colorCount = stage <= 5 ? 3 : 4;
+                float speed = Mathf.Min(GameConstants.MaxForwardSpeed, 7.45f + (stage - 1) * 0.13f);
+                float laneMove = 10.6f + (stage - 1) * 0.10f;
+                int seed = 12345 + stage * 137;
+                int tier = StageScoreAnalyzer.GetDifficultyTier(stage);
+                int themeIndex = (stage - 1) % VisualTheme.ThemeVariationCount;
+                int allowance = StageScoreAnalyzer.GetThreeStarMistakeAllowance(stage);
+                StageConfig baseStage = new StageConfig(
+                    stage,
+                    seed,
+                    trackLength,
+                    shardRows,
+                    obstacleChance,
+                    matchingShardChance,
+                    offColorShardChance,
+                    safeEmptyLaneChance,
+                    gateInterval,
+                    colorCount,
+                    1,
+                    1,
+                    speed,
+                    laneMove,
+                    0,
+                    0,
+                    allowance,
+                    tier,
+                    themeIndex);
+                StageScoreEstimate estimate = StageScoreAnalyzer.EstimateStage(baseStage);
+                stages[i] = new StageConfig(
+                    stage,
+                    seed,
+                    trackLength,
+                    shardRows,
+                    obstacleChance,
+                    matchingShardChance,
+                    offColorShardChance,
+                    safeEmptyLaneChance,
+                    gateInterval,
+                    colorCount,
+                    estimate.TwoStarScore,
+                    estimate.ThreeStarScore,
+                    speed,
+                    laneMove,
+                    estimate.EstimatedMaxAchievableScore,
+                    estimate.EstimatedMaxCollectibleCount,
+                    estimate.ThreeStarMistakeAllowance,
+                    tier,
+                    themeIndex);
             }
 
             return stages;
         }
 
-        // Returns a gentle per-lane obstacle chance so early stages stay collection-focused.
+        // Returns a per-lane obstacle chance that rises slowly across the 30-stage campaign.
         private static float GetObstacleLaneChance(int stage)
         {
             switch (stage)
             {
                 case 1:
-                    return 0.02f;
+                    return 0.018f;
                 case 2:
-                    return 0.035f;
+                    return 0.030f;
                 case 3:
-                    return 0.055f;
+                    return 0.045f;
                 default:
-                    return Mathf.Clamp(0.065f + (stage - 4) * 0.012f, 0.065f, 0.14f);
+                    if (stage <= 10)
+                    {
+                        return Mathf.Clamp(0.055f + (stage - 4) * 0.006f, 0.055f, 0.092f);
+                    }
+
+                    if (stage <= 20)
+                    {
+                        return Mathf.Clamp(0.095f + (stage - 11) * 0.004f, 0.095f, 0.132f);
+                    }
+
+                    return Mathf.Clamp(0.135f + (stage - 21) * 0.003f, 0.135f, 0.162f);
             }
         }
 
@@ -172,7 +255,17 @@ namespace ColorGateRush
                 case 3:
                     return 0.18f;
                 default:
-                    return Mathf.Clamp(0.17f - (stage - 4) * 0.005f, 0.13f, 0.17f);
+                    if (stage <= 10)
+                    {
+                        return Mathf.Clamp(0.17f - (stage - 4) * 0.004f, 0.145f, 0.17f);
+                    }
+
+                    if (stage <= 20)
+                    {
+                        return Mathf.Clamp(0.145f - (stage - 11) * 0.0015f, 0.130f, 0.145f);
+                    }
+
+                    return Mathf.Clamp(0.130f - (stage - 21) * 0.0015f, 0.115f, 0.130f);
             }
         }
 
@@ -188,7 +281,17 @@ namespace ColorGateRush
                 case 3:
                     return 0.34f;
                 default:
-                    return Mathf.Clamp(0.35f + (stage - 4) * 0.01f, 0.35f, 0.41f);
+                    if (stage <= 10)
+                    {
+                        return Mathf.Clamp(0.35f + (stage - 4) * 0.010f, 0.35f, 0.41f);
+                    }
+
+                    if (stage <= 20)
+                    {
+                        return Mathf.Clamp(0.42f + (stage - 11) * 0.006f, 0.42f, 0.475f);
+                    }
+
+                    return Mathf.Clamp(0.47f + (stage - 21) * 0.003f, 0.47f, 0.50f);
             }
         }
 
@@ -204,11 +307,21 @@ namespace ColorGateRush
                 case 3:
                     return 0.14f;
                 default:
-                    return Mathf.Clamp(0.13f - (stage - 4) * 0.006f, 0.08f, 0.13f);
+                    if (stage <= 10)
+                    {
+                        return Mathf.Clamp(0.13f - (stage - 4) * 0.006f, 0.09f, 0.13f);
+                    }
+
+                    if (stage <= 20)
+                    {
+                        return Mathf.Clamp(0.09f - (stage - 11) * 0.002f, 0.07f, 0.09f);
+                    }
+
+                    return Mathf.Clamp(0.07f - (stage - 21) * 0.001f, 0.06f, 0.07f);
             }
         }
 
-        // Returns wider early gate spacing so Stage 1 teaches color changes without crowding rows.
+        // Returns wider early gate spacing and tighter advanced spacing for more frequent color decisions.
         private static float GetGateInterval(int stage)
         {
             switch (stage)
@@ -220,7 +333,17 @@ namespace ColorGateRush
                 case 3:
                     return 54f;
                 default:
-                    return Mathf.Max(30f, 54f - stage * 2.2f);
+                    if (stage <= 10)
+                    {
+                        return Mathf.Max(40f, 52f - (stage - 4) * 2.0f);
+                    }
+
+                    if (stage <= 20)
+                    {
+                        return Mathf.Max(31f, 38f - (stage - 11) * 0.8f);
+                    }
+
+                    return 30f;
             }
         }
     }

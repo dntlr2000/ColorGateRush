@@ -14,7 +14,7 @@ namespace ColorGateRush
 
         private GameManager _manager;
         private Renderer _renderer;
-        private TextMesh _symbolText;
+        private GameObject _accentShape;
         private Vector2 _touchStart;
         private bool _hasTouchStart;
         private float _runTime;
@@ -56,12 +56,13 @@ namespace ColorGateRush
             _runTime += Time.deltaTime;
             HandleInput();
             MoveForwardAndLane();
-            UpdatePlayerSymbol();
+            UpdatePlayerAccent();
         }
 
         // Updates the gameplay color and swaps the procedural material to match it.
         public void SetColor(ColorId colorId)
         {
+            ColorId previousColor = currentColor;
             currentColor = colorId;
             if (_renderer == null)
             {
@@ -73,38 +74,44 @@ namespace ColorGateRush
                 _renderer.sharedMaterial = ProceduralFactory.ColorMaterial(colorId);
             }
 
-            EnsurePlayerSymbol();
-            if (_symbolText != null)
+            if (_accentShape != null && previousColor != colorId)
             {
-                _symbolText.text = GameConstants.ColorSymbol(colorId);
-                _symbolText.color = GameSettings.ColorAssistEnabled ? Color.white : Color.black;
-                _symbolText.characterSize = GameSettings.ColorAssistEnabled ? 0.34f : 0.28f;
-                UpdatePlayerSymbol();
+                Destroy(_accentShape);
+                _accentShape = null;
             }
+
+            EnsurePlayerAccent();
+            ProceduralFactory.ApplyPlayerAccentMaterial(_accentShape, colorId);
+            UpdatePlayerAccent();
         }
 
-        // Ensures the runner has a world-space symbol showing the current collection target.
-        private void EnsurePlayerSymbol()
+        // Ensures the runner has a non-text color accent showing the current collection target.
+        private void EnsurePlayerAccent()
         {
-            if (_symbolText != null)
+            if (_accentShape != null)
             {
                 return;
             }
 
-            Transform parent = transform.parent != null ? transform.parent : transform;
-            _symbolText = ProceduralFactory.AttachColorSymbol(parent, currentColor, transform.position + Vector3.up * 0.95f, 0.28f);
+            Transform parent = transform.parent != null ? transform.parent : null;
+            _accentShape = ProceduralFactory.CreatePlayerAccent(parent, currentColor, PlayerAccentPosition());
         }
 
-        // Keeps the detached player symbol readable while the sphere rolls.
-        private void UpdatePlayerSymbol()
+        // Keeps the detached player accent aligned while the sphere rolls.
+        private void UpdatePlayerAccent()
         {
-            if (_symbolText == null)
+            if (_accentShape == null)
             {
                 return;
             }
 
-            _symbolText.transform.position = transform.position + Vector3.up * 0.95f;
-            _symbolText.transform.rotation = Quaternion.Euler(65f, 0f, 0f);
+            _accentShape.transform.position = PlayerAccentPosition();
+        }
+
+        // Computes the stable ground position for the player color accent.
+        private Vector3 PlayerAccentPosition()
+        {
+            return new Vector3(transform.position.x, GameConstants.TrackY + 0.40f, transform.position.z - 0.72f);
         }
 
         // Routes input through the enabled Unity input backend for keyboard and touch lane changes.

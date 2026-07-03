@@ -15,7 +15,7 @@ namespace ColorGateRush
         // Returns whether short camera shake feedback is allowed.
         public static bool CameraShakeEnabled => PlayerPrefs.GetInt(CameraShakeEnabledKey, 1) == 1;
 
-        // Returns whether high-contrast colors and stronger symbols should be used.
+        // Returns whether high-contrast colors and clearer procedural shapes should be used.
         public static bool ColorAssistEnabled => PlayerPrefs.GetInt(ColorAssistEnabledKey, 0) == 1;
 
         // Returns whether the first-run tutorial has already been acknowledged.
