@@ -81,6 +81,10 @@ namespace ColorGateRush
                 PauseGame,
                 ResumeGame,
                 ToggleSound,
+                ToggleMusic,
+                ToggleSfx,
+                CycleMusicVolume,
+                CycleSfxVolume,
                 ToggleCameraShake,
                 ToggleColorAssist,
                 ResetLocalProgress,
@@ -147,6 +151,7 @@ namespace ColorGateRush
             _combo = 0;
             _state = GameState.Playing;
             _runner = _levelGenerator.ClearAndGenerate(this, stage);
+            _audio.PlayMusic(MusicType.Gameplay, stage.StageIndex);
             _ui.ShowPlayingHud(stage, _score, _combo, _runner.CurrentColor, seed);
             _ui.ShowStageStartHint(stage);
             ShowTutorialIfNeeded(stage);
@@ -224,6 +229,7 @@ namespace ColorGateRush
             }
             ShakeCamera(0.18f, 0.22f);
             _audio.PlayWrong();
+            _audio.PlayMusic(MusicType.Failed, _currentStage.StageIndex);
             UpdateHud();
             _lastStageResult = _stageManager.CreateFailedResult(_currentStage, _score);
             _ui.ShowResult(false, _currentStage, _lastStageResult, _stageManager.IsStageUnlocked(_currentStage.StageIndex + 1));
@@ -246,7 +252,7 @@ namespace ColorGateRush
             ProceduralFactory.FinishBurst(burstPosition);
             ProceduralFactory.FloatingText(burstPosition + Vector3.up * 0.75f, "클리어!", Color.white);
             ShakeCamera(0.10f, 0.18f);
-            _audio.PlayFinish();
+            _audio.PlayMusic(MusicType.Completed, _currentStage.StageIndex);
             UpdateHud();
             _lastStageResult = _stageManager.SaveStageResult(_currentStage, _score);
             _ui.ShowResult(true, _currentStage, _lastStageResult, _stageManager.IsStageUnlocked(_currentStage.StageIndex + 1));
@@ -260,6 +266,7 @@ namespace ColorGateRush
             RestoreTimeScale();
             _state = GameState.StageSelect;
             ClearCurrentLevel();
+            _audio.PlayMusic(MusicType.Menu);
             _ui.ShowStageSelect(_stageManager.Stages, _stageManager.UnlockedStage, _stageManager.SelectedStageIndex, GetBestStarsForUi);
         }
 
@@ -270,6 +277,7 @@ namespace ColorGateRush
             RestoreTimeScale();
             _state = GameState.Rules;
             ClearCurrentLevel();
+            _audio.PlayMusic(MusicType.Menu);
             _ui.ShowRules();
         }
 
@@ -280,6 +288,7 @@ namespace ColorGateRush
             RestoreTimeScale();
             _state = GameState.Settings;
             ClearCurrentLevel();
+            _audio.PlayMusic(MusicType.Menu);
             _ui.ShowSettings();
         }
 
@@ -296,13 +305,60 @@ namespace ColorGateRush
             RestoreTimeScale();
             _state = GameState.MainMenu;
             ClearCurrentLevel();
+            _audio.PlayMusic(MusicType.Menu);
             _ui.ShowMainMenu();
         }
 
-        // Toggles procedural sound playback and refreshes the settings panel labels.
+        // Toggles legacy sound playback and keeps split music/SFX settings in sync for old saves.
         private void ToggleSound()
         {
-            GameSettings.SetBool(GameSettings.SoundEnabledKey, !GameSettings.SoundEnabled);
+            bool enabled = !GameSettings.SoundEnabled;
+            GameSettings.SetBool(GameSettings.SoundEnabledKey, enabled);
+            GameSettings.SetBool(GameSettings.MusicEnabledKey, enabled);
+            GameSettings.SetBool(GameSettings.SfxEnabledKey, enabled);
+            _audio.RefreshSettings();
+            if (enabled)
+            {
+                _audio.PlayMusic(_state == GameState.Playing ? MusicType.Gameplay : MusicType.Menu, _currentStage.StageIndex);
+            }
+
+            _ui.ShowSettings();
+        }
+
+        // Toggles looped procedural music without changing SFX.
+        private void ToggleMusic()
+        {
+            GameSettings.SetBool(GameSettings.MusicEnabledKey, !GameSettings.MusicEnabled);
+            _audio.RefreshSettings();
+            if (GameSettings.MusicEnabled)
+            {
+                _audio.PlayMusic(_state == GameState.Playing ? MusicType.Gameplay : MusicType.Menu, _currentStage.StageIndex);
+            }
+
+            _ui.ShowSettings();
+        }
+
+        // Toggles procedural one-shot sound effects without changing music.
+        private void ToggleSfx()
+        {
+            GameSettings.SetBool(GameSettings.SfxEnabledKey, !GameSettings.SfxEnabled);
+            _audio.RefreshSettings();
+            _ui.ShowSettings();
+        }
+
+        // Cycles music volume through quiet, normal, and full presets.
+        private void CycleMusicVolume()
+        {
+            GameSettings.SetVolume(GameSettings.MusicVolumeKey, GameSettings.NextVolumeStep(GameSettings.MusicVolume));
+            _audio.RefreshSettings();
+            _ui.ShowSettings();
+        }
+
+        // Cycles SFX volume through quiet, normal, and full presets.
+        private void CycleSfxVolume()
+        {
+            GameSettings.SetVolume(GameSettings.SfxVolumeKey, GameSettings.NextVolumeStep(GameSettings.SfxVolume));
+            _audio.RefreshSettings();
             _ui.ShowSettings();
         }
 
@@ -339,6 +395,7 @@ namespace ColorGateRush
 
             _state = GameState.Paused;
             Time.timeScale = 0f;
+            _audio.SetMusicDucked(true);
             _ui.ShowPauseMenu(_currentStage, _score);
         }
 
@@ -352,6 +409,7 @@ namespace ColorGateRush
 
             RestoreTimeScale();
             _state = GameState.Playing;
+            _audio.SetMusicDucked(false);
             ColorId color = _runner != null ? _runner.CurrentColor : ColorId.Cyan;
             _ui.ShowPlayingHud(_currentStage, _score, _combo, color, seed);
             _ui.ShowMessage(string.Empty);
@@ -367,6 +425,7 @@ namespace ColorGateRush
 
             _state = GameState.Tutorial;
             Time.timeScale = 0f;
+            _audio.SetMusicDucked(true);
             _ui.ShowTutorial();
         }
 
@@ -381,6 +440,7 @@ namespace ColorGateRush
             GameSettings.MarkTutorialSeen();
             RestoreTimeScale();
             _state = GameState.Playing;
+            _audio.SetMusicDucked(false);
             ColorId color = _runner != null ? _runner.CurrentColor : ColorId.Cyan;
             _ui.ShowPlayingHud(_currentStage, _score, _combo, color, seed);
             _ui.ShowMessage("같은 색/모양 샤드를 모으세요");
@@ -473,11 +533,16 @@ namespace ColorGateRush
         }
 
         // Restores normal time flow when leaving pause or starting another screen.
-        private static void RestoreTimeScale()
+        private void RestoreTimeScale()
         {
             if (!Mathf.Approximately(Time.timeScale, 1f))
             {
                 Time.timeScale = 1f;
+            }
+
+            if (_audio != null)
+            {
+                _audio.SetMusicDucked(false);
             }
         }
 

@@ -25,7 +25,10 @@ namespace ColorGateRush
         private Text _messageText;
         private Text _debugText;
         private Text _hintText;
-        private Text _soundButtonText;
+        private Text _musicButtonText;
+        private Text _musicVolumeButtonText;
+        private Text _sfxButtonText;
+        private Text _sfxVolumeButtonText;
         private Text _cameraShakeButtonText;
         private Text _colorAssistButtonText;
         private Text _pauseStageText;
@@ -46,6 +49,10 @@ namespace ColorGateRush
         private Action _onPause;
         private Action _onResume;
         private Action _onToggleSound;
+        private Action _onToggleMusic;
+        private Action _onToggleSfx;
+        private Action _onCycleMusicVolume;
+        private Action _onCycleSfxVolume;
         private Action _onToggleCameraShake;
         private Action _onToggleColorAssist;
         private Action _onResetProgress;
@@ -83,6 +90,10 @@ namespace ColorGateRush
             Action onPause,
             Action onResume,
             Action onToggleSound,
+            Action onToggleMusic,
+            Action onToggleSfx,
+            Action onCycleMusicVolume,
+            Action onCycleSfxVolume,
             Action onToggleCameraShake,
             Action onToggleColorAssist,
             Action onResetProgress,
@@ -99,6 +110,10 @@ namespace ColorGateRush
             _onPause = onPause;
             _onResume = onResume;
             _onToggleSound = onToggleSound;
+            _onToggleMusic = onToggleMusic;
+            _onToggleSfx = onToggleSfx;
+            _onCycleMusicVolume = onCycleMusicVolume;
+            _onCycleSfxVolume = onCycleSfxVolume;
             _onToggleCameraShake = onToggleCameraShake;
             _onToggleColorAssist = onToggleColorAssist;
             _onResetProgress = onResetProgress;
@@ -445,11 +460,14 @@ namespace ColorGateRush
         {
             GameObject panel = CreatePanel(parent, "SettingsPanel", ScreenPanelColor(0.94f));
             CreateText(panel.transform, "SettingsTitleText", new Vector2(0f, 430f), TextAnchor.MiddleCenter, 64, new Vector2(900f, 100f), "설정");
-            _soundButtonText = CreateButton(panel.transform, "SoundToggleButton", new Vector2(0f, 250f), "Sound", () => _onToggleSound?.Invoke()).GetComponentInChildren<Text>();
-            _cameraShakeButtonText = CreateButton(panel.transform, "CameraShakeToggleButton", new Vector2(0f, 110f), "Camera", () => _onToggleCameraShake?.Invoke()).GetComponentInChildren<Text>();
-            _colorAssistButtonText = CreateButton(panel.transform, "ColorAssistToggleButton", new Vector2(0f, -30f), "Assist", () => _onToggleColorAssist?.Invoke()).GetComponentInChildren<Text>();
-            CreateButton(panel.transform, "ResetProgressButton", new Vector2(0f, -190f), "진행 초기화", ShowResetConfirm);
-            CreateButton(panel.transform, "SettingsBackButton", new Vector2(0f, -390f), "메인 메뉴", () => _onMainMenu?.Invoke());
+            _musicButtonText = CreateButton(panel.transform, "MusicToggleButton", new Vector2(0f, 280f), "Music", () => _onToggleMusic?.Invoke()).GetComponentInChildren<Text>();
+            _musicVolumeButtonText = CreateButton(panel.transform, "MusicVolumeButton", new Vector2(0f, 170f), "Music Vol", () => _onCycleMusicVolume?.Invoke()).GetComponentInChildren<Text>();
+            _sfxButtonText = CreateButton(panel.transform, "SfxToggleButton", new Vector2(0f, 60f), "SFX", () => _onToggleSfx?.Invoke()).GetComponentInChildren<Text>();
+            _sfxVolumeButtonText = CreateButton(panel.transform, "SfxVolumeButton", new Vector2(0f, -50f), "SFX Vol", () => _onCycleSfxVolume?.Invoke()).GetComponentInChildren<Text>();
+            _cameraShakeButtonText = CreateButton(panel.transform, "CameraShakeToggleButton", new Vector2(0f, -160f), "Camera", () => _onToggleCameraShake?.Invoke()).GetComponentInChildren<Text>();
+            _colorAssistButtonText = CreateButton(panel.transform, "ColorAssistToggleButton", new Vector2(0f, -270f), "Assist", () => _onToggleColorAssist?.Invoke()).GetComponentInChildren<Text>();
+            CreateButton(panel.transform, "ResetProgressButton", new Vector2(-255f, -405f), "진행 초기화", ShowResetConfirm);
+            CreateButton(panel.transform, "SettingsBackButton", new Vector2(255f, -405f), "메인 메뉴", () => _onMainMenu?.Invoke());
             _resetConfirmPanel = CreateResetConfirmPanel(panel.transform);
             _resetConfirmPanel.SetActive(false);
             return panel;
@@ -474,7 +492,10 @@ namespace ColorGateRush
         // Updates Settings button labels from the current PlayerPrefs values.
         private void RefreshSettingsLabels()
         {
-            _soundButtonText.text = "Sound " + (GameSettings.SoundEnabled ? "On" : "Off");
+            _musicButtonText.text = "Music " + (GameSettings.MusicEnabled ? "On" : "Off");
+            _musicVolumeButtonText.text = "Music Vol " + VolumePercent(GameSettings.MusicVolume);
+            _sfxButtonText.text = "SFX " + (GameSettings.SfxEnabled ? "On" : "Off");
+            _sfxVolumeButtonText.text = "SFX Vol " + VolumePercent(GameSettings.SfxVolume);
             _cameraShakeButtonText.text = "Camera Shake " + (GameSettings.CameraShakeEnabled ? "On" : "Off");
             _colorAssistButtonText.text = "Color Assist " + (GameSettings.ColorAssistEnabled ? "On" : "Off");
         }
@@ -563,6 +584,12 @@ namespace ColorGateRush
         {
             stars = Mathf.Clamp(stars, 0, 3);
             return new string('★', stars) + new string('☆', 3 - stars);
+        }
+
+        // Formats a normalized volume value as a compact settings label.
+        private static string VolumePercent(float value)
+        {
+            return Mathf.RoundToInt(Mathf.Clamp01(value) * 100f) + "%";
         }
 
         // Creates a full-screen panel with a simple procedural color fill.

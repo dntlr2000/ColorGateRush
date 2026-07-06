@@ -48,7 +48,7 @@
 | Obstacle | Warning block + stripe/spike accents | Fail or penalty | Primitive Cubes |
 | Finish | Trigger plane + arch/checker strip | Ends run | Primitive Cubes |
 | Particles | ParticleSystem | Collect/gate/fail/finish feedback | Built-in ParticleSystem |
-| Audio | Runtime sine waves | Collect/gate/hit/finish | `AudioClip.Create` |
+| Audio | Runtime sine waves and short loops | Menu/gameplay BGM, collect/gate/hit/result | `AudioClip.Create` |
 | Player accent | Color-specific primitive shape | Shows current target color/shape without text overlay | Primitive Sphere/Cube/Capsule |
 
 ## 6. Scoring
@@ -62,12 +62,13 @@
 
 ## 6.1 Feedback and Accessibility
 
-- Successful collection uses particles, procedural SFX, and floating score text.
-- Wrong-color shards and obstacles use red fail particles, buzz SFX, and clear HUD messages.
-- Gates display a short color-change message and a small primitive target marker.
+- Successful collection uses colored particles, a small sparkle layer, procedural SFX, and floating score text.
+- Wrong-color shards and obstacles use red/warning fail particles, shock rings, buzz SFX, and clear HUD messages.
+- Gates display a short color-change message, a small primitive target marker, a pulse burst, and a rising procedural tone.
+- Menu and gameplay screens use separate lightweight procedural BGM loops; completed/failed screens use short stings instead of external audio files.
 - Every gameplay color has a paired shape: Cyan 구슬, Magenta 큐브, Yellow 캡슐, Lime 다이아.
 - Shards, player accent, and the HUD use the same color/shape source of truth; no black TextMesh symbols are placed above shards or the player.
-- Settings include Sound, Camera Shake, and Color Assist toggles saved with `CGR_` PlayerPrefs keys.
+- Settings include Music, SFX, volume steps, Camera Shake, and Color Assist controls saved with `CGR_` PlayerPrefs keys.
 
 ## 7. Level Generation Rules
 
@@ -89,7 +90,7 @@
 - `VisualTheme` is the source of truth for background, fog, track, obstacle, finish, HUD, and VFX colors.
 - Stages cycle through five code-defined theme variations for background, track accent, HUD accent, gate, and finish tone.
 - Background: softened blue-violet Camera color, fog, and procedural backdrop/side panels instead of the default Unity skybox.
-- Track: darker blue/charcoal base with side rails, lane separators, edge glow, and rhythm stripes for object contrast.
+- Track: darker blue/charcoal base with side rails, lane separators, edge glow, side light strips, and rhythm stripes for object contrast.
 - Colors: cyan, magenta, yellow, lime.
 - Shapes: each collectible color has a distinct primitive silhouette.
 - Shards: glossy/emissive material, soft glow shell, subtle bob/spin, and short collect burst.
@@ -157,7 +158,11 @@
   - `CGR_StageStars_{stageIndex}`
   - `CGR_SelectedStage`
   - `CGR_TutorialSeen`
-  - `CGR_SoundEnabled`
+  - `CGR_SoundEnabled` (legacy compatibility)
+  - `CGR_MusicEnabled`
+  - `CGR_SfxEnabled`
+  - `CGR_MusicVolume`
+  - `CGR_SfxVolume`
   - `CGR_CameraShake`
   - `CGR_HighContrast`
 
@@ -174,3 +179,12 @@
 - Empty lanes and expected-color shards count as safe options.
 - Unsafe row repair favors collectible matching shards on Stage 1-2 before falling back to empty lanes.
 - Level generation produces a report that validator smoke tests can inspect.
+
+## 12. Build Readiness
+
+- Validate Build, Generate Balance Report, and Generate Release Readiness Report must pass before packaging.
+- Stage 1-30 should be manually sampled for unlock, score, pause, retry, and result-screen regressions.
+- No external art/audio/model/font/prefab assets are allowed under `Assets/_Project`.
+- Android and WebGL builds are manual Unity Editor tasks; automation maintains only static checks, validators, and checklists.
+- APK is for local Android testing, AAB is for Google Play submission, and keystore/signing files stay outside the repository.
+- WebGL testing must include browser persistence, resize behavior, first-input audio unlock, and keyboard/mouse/touch checks.

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 #if ENABLE_INPUT_SYSTEM
@@ -161,13 +162,14 @@ namespace ColorGateRush
             UnityEngine.InputSystem.Controls.TouchControl primaryTouch = touchscreen.primaryTouch;
             if (primaryTouch.press.wasPressedThisFrame)
             {
-                if (IsPointerOverUi())
+                Vector2 touchPosition = primaryTouch.position.ReadValue();
+                if (IsPointerOverUi(touchPosition))
                 {
                     _hasTouchStart = false;
                     return;
                 }
 
-                _touchStart = primaryTouch.position.ReadValue();
+                _touchStart = touchPosition;
                 _hasTouchStart = true;
             }
             else if (_hasTouchStart && primaryTouch.press.wasReleasedThisFrame)
@@ -204,7 +206,7 @@ namespace ColorGateRush
             Touch touch = Input.GetTouch(0);
             if (touch.phase == TouchPhase.Began)
             {
-                if (IsPointerOverUi())
+                if (IsPointerOverUi(touch.position, touch.fingerId))
                 {
                     _hasTouchStart = false;
                     return;
@@ -236,21 +238,25 @@ namespace ColorGateRush
         }
 
         // Prevents UI button touches from also becoming gameplay lane input.
-        private static bool IsPointerOverUi()
+        private static bool IsPointerOverUi(Vector2 screenPosition, int pointerId = -1)
         {
             if (EventSystem.current == null)
             {
                 return false;
             }
 
-#if ENABLE_LEGACY_INPUT_MANAGER
-            if (Input.touchCount > 0)
+            if (pointerId >= 0 && EventSystem.current.IsPointerOverGameObject(pointerId))
             {
-                return EventSystem.current.IsPointerOverGameObject(Input.GetTouch(0).fingerId);
+                return true;
             }
-#endif
 
-            return EventSystem.current.IsPointerOverGameObject();
+            PointerEventData eventData = new PointerEventData(EventSystem.current)
+            {
+                position = screenPosition
+            };
+            List<RaycastResult> results = new List<RaycastResult>(4);
+            EventSystem.current.RaycastAll(eventData, results);
+            return results.Count > 0 || EventSystem.current.IsPointerOverGameObject();
         }
 
         // Applies a signed lane delta while keeping the player inside the track.

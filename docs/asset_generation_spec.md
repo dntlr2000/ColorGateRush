@@ -48,10 +48,10 @@ Transparent gate material:
 
 Create runtime ParticleSystem bursts:
 
-- Collect: small colored burst plus a tiny sparkle ring.
-- Gate: vertical ring-like burst plus short color burst.
-- Fail: red/warning shock burst.
-- Finish: larger gold/white burst plus ring.
+- Collect: small colored burst plus white sparkle and a tiny ring.
+- Gate: vertical ring-like burst plus short color burst and white pulse ring.
+- Fail: red/warning shock burst plus compact impact ring.
+- Finish: larger gold/white burst plus ring and bright sparkle burst.
 - Floating score: pooled runtime `TextMesh` feedback.
 
 Use short lifetime and low particle counts for mobile.
@@ -72,9 +72,12 @@ Use runtime-generated clips:
 - Gate: rising tone.
 - Fail: low buzz/noise-like tone.
 - Finish: simple arpeggio.
+- Menu BGM: gentle short loop generated in code.
+- Gameplay BGM: stage-tier loop generated in code with small tempo/pitch variation.
+- Completed/Failed stings: short non-looped generated clips.
 
-Implementation target: `AudioClip.Create` with decay envelope. No `.wav`, `.mp3`, or imported audio.
-Sound playback is controlled by `CGR_SoundEnabled`.
+Implementation target: `AudioClip.Create` with envelopes and simple oscillators. No `.wav`, `.mp3`, `.ogg`, or imported audio.
+Music and SFX playback are controlled independently by `CGR_MusicEnabled`, `CGR_SfxEnabled`, `CGR_MusicVolume`, and `CGR_SfxVolume`. The legacy `CGR_SoundEnabled` key is retained only for compatibility.
 
 ## UI
 
@@ -89,7 +92,7 @@ Generate a Canvas and basic text at runtime:
 - Top-left HUD contrast panel with text shadow
 - Theme-driven menu/pause/result panels and accent buttons
 - Pause button anchored to the screen top-right
-- Settings screen for Sound, Camera Shake, Color Assist, and guarded Reset Progress
+- Settings screen for Music, Music Volume, SFX, SFX Volume, Camera Shake, Color Assist, and guarded Reset Progress
 - Stage 1 first-run tutorial panel
 - State/result message
 - Short stage-start toast that auto-hides after a few seconds and does not change game state

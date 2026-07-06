@@ -313,6 +313,13 @@ namespace ColorGateRush
                     new Vector3(side * (railX - 0.23f), 0.035f, centerZ),
                     new Vector3(0.05f, 0.05f, length),
                     ProceduralFactory.TrackAccentMaterial());
+                ProceduralFactory.VisualPrimitive(
+                    PrimitiveType.Cube,
+                    "TrackSideLightStrip_" + side,
+                    visualRoot,
+                    new Vector3(side * (railX + 0.18f), 0.075f, centerZ),
+                    new Vector3(0.055f, 0.10f, length * 0.96f),
+                    ProceduralFactory.TrackAccentMaterial());
             }
 
             float[] separators = { -GameConstants.LaneSpacing * 0.5f, GameConstants.LaneSpacing * 0.5f };

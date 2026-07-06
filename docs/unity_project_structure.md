@@ -22,6 +22,7 @@ UnityProjectRoot/
   docs/
     automation_workflow.md
     asset_generation_spec.md
+    release_readiness_checklist.md
     unity_project_structure.md
   Assets/
     _Project/
@@ -68,4 +69,4 @@ UnityProjectRoot/
 - Stage 1 is always available, and each later stage unlocks from a clear with at least 1 star while best-star records never downgrade.
 - `ShardVisualAnimator.cs` adds mobile-safe bob/spin polish without changing lane or row generation rules.
 - Visual-only background, track rails, stripes, obstacle accents, gate cues, and finish details are generated under `GeneratedLevel` and use disabled colliders.
-- `BuildValidator.cs` exposes Validate Build, Generate Balance Report, and Reset Local Progress for release-candidate QA without requiring external assets.
+- `BuildValidator.cs` exposes Validate Build, Generate Balance Report, Generate Release Readiness Report, and Reset Local Progress for release-candidate QA without requiring external assets.

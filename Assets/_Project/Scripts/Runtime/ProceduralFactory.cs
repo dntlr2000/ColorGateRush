@@ -402,6 +402,7 @@ namespace ColorGateRush
         {
             Burst(position, color, ScaledParticleCount(18), 0.16f, 0.35f);
             RingBurst(position + Vector3.up * 0.08f, color, ScaledParticleCount(10), 0.08f, 0.28f, 0.38f);
+            Burst(position + Vector3.up * 0.32f, Color.white, ScaledParticleCount(6), 0.055f, 0.22f);
         }
 
         // Emits a vertical ring-like burst used when the runner crosses a color gate.
@@ -409,6 +410,7 @@ namespace ColorGateRush
         {
             RingBurst(position, color, ScaledParticleCount(30), 0.18f, 0.45f, 0.82f);
             Burst(position + Vector3.up * 0.2f, color, ScaledParticleCount(12), 0.10f, 0.32f);
+            RingBurst(position + Vector3.up * 0.38f, Color.white, ScaledParticleCount(8), 0.055f, 0.24f, 0.46f);
         }
 
         // Emits a larger white and gold burst used when the runner finishes a run.
@@ -416,6 +418,7 @@ namespace ColorGateRush
         {
             Burst(position, VisualTheme.Current().FinishColor, ScaledParticleCount(42), 0.28f, 0.65f);
             RingBurst(position + Vector3.up * 0.15f, GameConstants.ToUnityColor(ColorId.Yellow), ScaledParticleCount(46), 0.22f, 0.7f, 1.1f);
+            Burst(position + Vector3.up * 0.55f, Color.white, ScaledParticleCount(22), 0.13f, 0.48f);
         }
 
         // Emits the red burst used for wrong shards and obstacle failures.
@@ -423,6 +426,7 @@ namespace ColorGateRush
         {
             Burst(position, VisualTheme.Current().ObstacleColor, ScaledParticleCount(34), 0.24f, 0.45f);
             RingBurst(position, VisualTheme.Current().ObstacleWarningColor, ScaledParticleCount(16), 0.12f, 0.32f, 0.55f);
+            RingBurst(position + Vector3.up * 0.12f, Color.white, ScaledParticleCount(6), 0.05f, 0.20f, 0.36f);
         }
 
         // Emits a spherical one-shot particle burst at the requested world position.

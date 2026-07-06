@@ -1,6 +1,8 @@
 #if UNITY_EDITOR
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -33,6 +35,7 @@ namespace ColorGateRush.EditorTools
             EnsureVisualReadabilityReferences();
             EnsureVisualPolishReferences();
             EnsureNoAutomaticRestartReferences();
+            EnsureNoForbiddenProcessOrPrefsUsage();
             EnsureRuntimeFolderHasNoUnityEditorReferences();
             EnsureNoMonoBehaviourFileNameMismatch();
             EnsureSceneContents();
@@ -66,6 +69,49 @@ namespace ColorGateRush.EditorTools
             EnsureRuntimeGenerationSmoke();
         }
 
+        [MenuItem("Tools/Color Gate Rush/Generate Release Readiness Report")]
+        // Generates a non-building Android/WebGL readiness report from static settings and validator smoke checks.
+        public static void GenerateReleaseReadinessReport()
+        {
+            StringBuilder report = new StringBuilder();
+            int hardFails = 0;
+            int warnings = 0;
+            report.AppendLine("Color Gate Rush Release Readiness Report");
+            report.AppendLine("This report does not run Android/WebGL builds or external processes.");
+            report.AppendLine("Unity Version: " + GetProjectVersionSummary());
+
+            AppendValidation(report, "Main scene exists", EnsureSceneAssetExists, ref hardFails);
+            AppendValidation(report, "Main scene registered in Build Settings", EnsureBuildSceneRegistered, ref hardFails);
+            AppendValidation(report, "Stage progression and star targets", EnsureStageProgressionRules, ref hardFails);
+            AppendValidation(report, "Stage 1-30 generation and balance smoke", EnsureRuntimeGenerationSmoke, ref hardFails);
+            AppendValidation(report, "Runtime folder has no UnityEditor references", EnsureRuntimeFolderHasNoUnityEditorReferences, ref hardFails);
+            AppendValidation(report, "No imported media/font/prefab assets under Assets/_Project", EnsureNoProjectRuntimeAssets, ref hardFails);
+            AppendValidation(report, "No automatic restart patterns", EnsureNoAutomaticRestartReferences, ref hardFails);
+            AppendValidation(report, "No forbidden process launch or full PlayerPrefs reset usage", EnsureNoForbiddenProcessOrPrefsUsage, ref hardFails);
+            AppendValidation(report, "Stage start hint is transient", EnsureStageStartHintReferences, ref hardFails);
+            AppendValidation(report, "VisualTheme and HUD readability hooks exist", EnsureVisualPolishReferences, ref hardFails);
+            AppendAndroidReadiness(report, ref warnings);
+            AppendWebGlReadiness(report, ref warnings);
+            report.AppendLine("Manual Checks: Android/WebGL builds, device thermal/performance pass, browser audio unlock, signing, icon, and store metadata are not automated.");
+            report.AppendLine("Summary: hardFails=" + hardFails + ", warnings=" + warnings);
+
+            string output = report.ToString();
+            if (hardFails > 0)
+            {
+                Debug.LogError(output);
+                throw new InvalidOperationException("Release readiness report found " + hardFails + " hard fail(s).");
+            }
+
+            if (warnings > 0)
+            {
+                Debug.LogWarning(output);
+            }
+            else
+            {
+                Debug.Log(output);
+            }
+        }
+
         [MenuItem("Tools/Color Gate Rush/Reset Local Progress")]
         // Clears only CGR-prefixed local progress keys.
         public static void ResetLocalProgress()
@@ -78,6 +124,263 @@ namespace ColorGateRush.EditorTools
         public static void ValidateFromCommandLine()
         {
             Validate();
+        }
+
+        // Returns the Unity version line recorded by ProjectVersion.txt.
+        private static string GetProjectVersionSummary()
+        {
+            string projectVersionPath = "ProjectSettings/ProjectVersion.txt";
+            if (!File.Exists(projectVersionPath))
+            {
+                return "missing ProjectVersion.txt";
+            }
+
+            using (StringReader reader = new StringReader(File.ReadAllText(projectVersionPath)))
+            {
+                string line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    if (line.Contains("m_EditorVersion:"))
+                    {
+                        return line.Trim();
+                    }
+                }
+            }
+
+            return "unknown";
+        }
+
+        // Appends one hard-fail validator result without stopping the readiness report early.
+        private static void AppendValidation(StringBuilder report, string label, Action validation, ref int hardFails)
+        {
+            try
+            {
+                validation();
+                report.AppendLine("[PASS] " + label);
+            }
+            catch (Exception exception)
+            {
+                hardFails++;
+                report.AppendLine("[FAIL] " + label + " - " + exception.Message);
+            }
+        }
+
+        // Appends one warning line and increments the report warning count.
+        private static void AppendWarning(StringBuilder report, string label, string detail, ref int warnings)
+        {
+            warnings++;
+            report.AppendLine("[WARN] " + label + " - " + detail);
+        }
+
+        // Appends one informational release checklist line.
+        private static void AppendInfo(StringBuilder report, string label, string detail)
+        {
+            report.AppendLine("[INFO] " + label + " - " + detail);
+        }
+
+        // Extracts top-level arguments from a method call so validators are resilient to multi-line formatting.
+        private static string[] ExtractMethodCallArguments(string source, string callToken)
+        {
+            int callIndex = source.IndexOf(callToken, StringComparison.Ordinal);
+            if (callIndex < 0)
+            {
+                return new string[0];
+            }
+
+            int openParenIndex = source.IndexOf('(', callIndex);
+            if (openParenIndex < 0)
+            {
+                return new string[0];
+            }
+
+            List<string> arguments = new List<string>();
+            int depth = 0;
+            int argumentStart = openParenIndex + 1;
+            for (int i = openParenIndex + 1; i < source.Length; i++)
+            {
+                char character = source[i];
+                if (character == '(')
+                {
+                    depth++;
+                }
+                else if (character == ')')
+                {
+                    if (depth == 0)
+                    {
+                        arguments.Add(source.Substring(argumentStart, i - argumentStart).Trim());
+                        return arguments.ToArray();
+                    }
+
+                    depth--;
+                }
+                else if (character == ',' && depth == 0)
+                {
+                    arguments.Add(source.Substring(argumentStart, i - argumentStart).Trim());
+                    argumentStart = i + 1;
+                }
+            }
+
+            return arguments.ToArray();
+        }
+
+        // Returns a bounded source slice starting at a marker for focused static validation.
+        private static string ExtractSourceWindow(string source, string marker, int maxLength)
+        {
+            int startIndex = source.IndexOf(marker, StringComparison.Ordinal);
+            if (startIndex < 0)
+            {
+                return string.Empty;
+            }
+
+            int length = Math.Min(maxLength, source.Length - startIndex);
+            return source.Substring(startIndex, length);
+        }
+
+        // Checks whether a source fragment contains any token from a small allow/deny list.
+        private static bool ContainsAnyToken(string source, string[] tokens)
+        {
+            foreach (string token in tokens)
+            {
+                if (source.Contains(token))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // Appends Android build-readiness warnings that require manual Unity Editor review.
+        private static void AppendAndroidReadiness(StringBuilder report, ref int warnings)
+        {
+            string settingsPath = "ProjectSettings/ProjectSettings.asset";
+            if (!File.Exists(settingsPath))
+            {
+                AppendWarning(report, "Android settings", "ProjectSettings.asset is missing.", ref warnings);
+                return;
+            }
+
+            string projectSettings = File.ReadAllText(settingsPath);
+            string companyName = ReadProjectSettingValue(projectSettings, "companyName");
+            string productName = ReadProjectSettingValue(projectSettings, "productName");
+            string applicationIdentifier = ReadProjectSettingValue(projectSettings, "applicationIdentifier");
+            string bundleVersion = ReadProjectSettingValue(projectSettings, "bundleVersion");
+            string versionCode = ReadProjectSettingValue(projectSettings, "AndroidBundleVersionCode");
+            string minSdk = ReadProjectSettingValue(projectSettings, "AndroidMinSdkVersion");
+            string targetSdk = ReadProjectSettingValue(projectSettings, "AndroidTargetSdkVersion");
+            string orientation = ReadProjectSettingValue(projectSettings, "defaultScreenOrientation");
+            string portrait = ReadProjectSettingValue(projectSettings, "allowedAutorotateToPortrait");
+            string landscapeRight = ReadProjectSettingValue(projectSettings, "allowedAutorotateToLandscapeRight");
+            string landscapeLeft = ReadProjectSettingValue(projectSettings, "allowedAutorotateToLandscapeLeft");
+            string scriptingBackend = ReadProjectSettingValue(projectSettings, "scriptingBackend");
+            string architectures = ReadProjectSettingValue(projectSettings, "AndroidTargetArchitectures");
+
+            if (string.IsNullOrEmpty(companyName) || companyName == "DefaultCompany")
+            {
+                AppendWarning(report, "Android company name", "Replace DefaultCompany before release.", ref warnings);
+            }
+
+            if (string.IsNullOrEmpty(productName) || productName.IndexOf("template", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                AppendWarning(report, "Android product name", "Confirm a store-ready product name.", ref warnings);
+            }
+
+            if (string.IsNullOrEmpty(applicationIdentifier)
+                || applicationIdentifier.IndexOf("UnityTechnologies", StringComparison.OrdinalIgnoreCase) >= 0
+                || applicationIdentifier.IndexOf("template", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                AppendWarning(report, "Android package name", "Set a unique reverse-DNS package id, e.g. com.studio.colorgaterush.", ref warnings);
+            }
+
+            if (versionCode == "1")
+            {
+                AppendWarning(report, "Android version code", "Version code is still 1; bump deliberately for store uploads.", ref warnings);
+            }
+
+            if (orientation == "0" || landscapeRight == "1" || landscapeLeft == "1")
+            {
+                AppendWarning(report, "Android orientation", "This portrait runner should be reviewed for portrait-first orientation and safe area behavior.", ref warnings);
+            }
+
+            AppendInfo(report, "Android bundle version", string.IsNullOrEmpty(bundleVersion) ? "missing" : bundleVersion);
+            AppendInfo(report, "Android SDK levels", "min=" + minSdk + ", target=" + targetSdk + " (0 usually means automatic/highest installed in Unity).");
+            AppendInfo(report, "Android scripting backend", "value=" + scriptingBackend + " (Unity enum; verify IL2CPP for release if required).");
+            AppendInfo(report, "Android target architectures", "value=" + architectures + " (verify ARM64 for Google Play).");
+            AppendInfo(report, "Android signing", "Keystore/signing credentials must be configured manually outside the repository.");
+            AppendInfo(report, "Android build artifact", "Use APK for local testing and AAB for Google Play submission.");
+        }
+
+        // Appends WebGL build-readiness notes that require browser testing after manual build.
+        private static void AppendWebGlReadiness(StringBuilder report, ref int warnings)
+        {
+            string settingsPath = "ProjectSettings/ProjectSettings.asset";
+            string runtimeUiPath = "Assets/_Project/Scripts/Runtime/RuntimeUi.cs";
+            string settingsSource = File.Exists(settingsPath) ? File.ReadAllText(settingsPath) : string.Empty;
+            string runtimeUiSource = File.Exists(runtimeUiPath) ? File.ReadAllText(runtimeUiPath) : string.Empty;
+
+            if (runtimeUiSource.Contains("Application.Quit"))
+            {
+                AppendWarning(report, "WebGL quit flow", "Application.Quit is not meaningful in WebGL and should be hidden or guarded.", ref warnings);
+            }
+
+            if (!runtimeUiSource.Contains("ScrollRect") || !runtimeUiSource.Contains("CanvasScaler"))
+            {
+                AppendWarning(report, "WebGL responsive UI", "Stage Select and long panels should use CanvasScaler and scrolling controls.", ref warnings);
+            }
+
+            AppendInfo(report, "WebGL PlayerPrefs", "Progress uses simple CGR_ PlayerPrefs keys; verify browser persistence after build.");
+            AppendInfo(report, "WebGL audio", "Browsers may block AudioContext until first user input; verify collect/gate/fail/finish sounds after clicking Start.");
+            AppendInfo(report, "WebGL memory/compression", "Compression, load time, and browser memory are manual Build Profile checks.");
+            AppendInfo(report, "WebGL input", "Mouse/touch UI should be tested for lane input conflicts in browser.");
+            AppendInfo(report, "WebGL input backend", "activeInputHandler=" + ReadProjectSettingValue(settingsSource, "activeInputHandler"));
+        }
+
+        // Reads a single YAML-style ProjectSettings value.
+        private static string ReadProjectSettingValue(string source, string key)
+        {
+            if (string.IsNullOrEmpty(source))
+            {
+                return string.Empty;
+            }
+
+            using (StringReader reader = new StringReader(source))
+            {
+                string line;
+                string prefix = key + ":";
+                while ((line = reader.ReadLine()) != null)
+                {
+                    string trimmed = line.Trim();
+                    if (trimmed.StartsWith(prefix, StringComparison.Ordinal))
+                    {
+                        return trimmed.Substring(prefix.Length).Trim();
+                    }
+                }
+            }
+
+            return string.Empty;
+        }
+
+        // Fails validation if runtime/editor project code uses prohibited process or PlayerPrefs reset APIs.
+        private static void EnsureNoForbiddenProcessOrPrefsUsage()
+        {
+            string scriptsPath = "Assets/_Project/Scripts";
+            if (!Directory.Exists(scriptsPath))
+            {
+                throw new InvalidOperationException("Missing project scripts folder: " + scriptsPath);
+            }
+
+            string deleteAllToken = "PlayerPrefs." + "DeleteAll";
+            string processStartToken = "Process." + "Start";
+            string processTypeToken = "System.Diagnostics." + "Process";
+            string[] scripts = Directory.GetFiles(scriptsPath, "*.cs", SearchOption.AllDirectories);
+            foreach (string script in scripts)
+            {
+                string source = File.ReadAllText(script);
+                if (source.Contains(deleteAllToken) || source.Contains(processStartToken) || source.Contains(processTypeToken))
+                {
+                    throw new InvalidOperationException("Forbidden build-readiness API usage found in " + script.Replace('\\', '/'));
+                }
+            }
         }
 
         // Confirms that the project is intentionally pinned to Unity 6 / 6000.x.
@@ -360,14 +663,53 @@ namespace ColorGateRush.EditorTools
                 throw new InvalidOperationException("GameManager is missing a Paused game state.");
             }
 
-            if (gameManagerSource.Contains("BeginRunFromMenu") || gameManagerSource.Contains("_ui.Configure(BeginRunFromMenu"))
+            string[] configureArguments = ExtractMethodCallArguments(gameManagerSource, "_ui.Configure(");
+            if (configureArguments.Length < 8)
             {
-                throw new InvalidOperationException("Main Menu Start still appears to start gameplay directly.");
+                throw new InvalidOperationException("Could not parse GameManager.cs _ui.Configure callback list for menu flow validation.");
             }
 
-            if (!gameManagerSource.Contains("_ui.Configure(ShowStageSelect, ShowStageSelect"))
+            string startRoute = configureArguments[0].Trim();
+            string stageSelectRoute = configureArguments[1].Trim();
+            string stageButtonRoute = configureArguments[7].Trim();
+            string[] allowedStageSelectRoutes = { "ShowStageSelect", "EnterStageSelect", "OpenStageSelect" };
+            string[] forbiddenDirectStartRoutes = { "StartRun", "StartStage", "StartStageFromSelect", "RestartCurrentRun", "BeginRun", "StartSelectedStage" };
+            if (ContainsAnyToken(startRoute, forbiddenDirectStartRoutes))
             {
-                throw new InvalidOperationException("Main Menu Start should route to Stage Select.");
+                throw new InvalidOperationException("Main Menu Start appears to call a direct start route in GameManager.cs _ui.Configure: " + startRoute);
+            }
+
+            if (!ContainsAnyToken(startRoute, allowedStageSelectRoutes))
+            {
+                throw new InvalidOperationException("Main Menu Start appears to call " + startRoute
+                    + " instead of a StageSelect route. Check RuntimeUi.CreateMenuPanel and GameManager.ShowStageSelect.");
+            }
+
+            if (!ContainsAnyToken(stageSelectRoute, allowedStageSelectRoutes))
+            {
+                throw new InvalidOperationException("Stage Select menu callback does not route to StageSelect. Found in GameManager.cs _ui.Configure: " + stageSelectRoute);
+            }
+
+            if (!ContainsAnyToken(stageButtonRoute, new[] { "StartStageFromSelect", "StartStage" }))
+            {
+                throw new InvalidOperationException("StageSelect stage button callback should be the only direct stage-start route. Found: " + stageButtonRoute);
+            }
+
+            string menuPanelSource = ExtractSourceWindow(runtimeUiSource, "private GameObject CreateMenuPanel", 1800);
+            if (!menuPanelSource.Contains("StartButton") || !menuPanelSource.Contains("_onStart?.Invoke()"))
+            {
+                throw new InvalidOperationException("RuntimeUi.cs Main Menu Start button is not clearly bound to _onStart. Check RuntimeUi.CreateMenuPanel.");
+            }
+
+            if (ContainsAnyToken(menuPanelSource, new[] { "_onStageSelected", "_onRestart", "StartRun", "StartStage", "RestartCurrentRun", "BeginRun" }))
+            {
+                throw new InvalidOperationException("RuntimeUi.cs Main Menu Start panel contains a forbidden direct-start reference.");
+            }
+
+            string stageButtonSource = ExtractSourceWindow(runtimeUiSource, "private void RebuildStageButtons", 2200);
+            if (!stageButtonSource.Contains("_onStageSelected?.Invoke(stageIndex)") || !stageButtonSource.Contains("button.interactable = unlocked"))
+            {
+                throw new InvalidOperationException("RuntimeUi.cs StageSelect buttons must call _onStageSelected and keep locked stages non-interactable.");
             }
 
             string[] requiredGameManagerHooks =
@@ -436,6 +778,10 @@ namespace ColorGateRush.EditorTools
             {
                 "CGR_TutorialSeen",
                 "CGR_SoundEnabled",
+                "CGR_MusicEnabled",
+                "CGR_SfxEnabled",
+                "CGR_MusicVolume",
+                "CGR_SfxVolume",
                 "CGR_CameraShake",
                 "CGR_HighContrast"
             };
@@ -454,6 +800,10 @@ namespace ColorGateRush.EditorTools
                 "ShowTutorialIfNeeded",
                 "DismissTutorial",
                 "ToggleSound",
+                "ToggleMusic",
+                "ToggleSfx",
+                "CycleMusicVolume",
+                "CycleSfxVolume",
                 "ToggleCameraShake",
                 "ToggleColorAssist",
                 "ResetLocalProgress"
@@ -467,9 +817,45 @@ namespace ColorGateRush.EditorTools
                 }
             }
 
-            if (!proceduralAudioSource.Contains("GameSettings.SoundEnabled"))
+            string[] requiredAudioTokens =
             {
-                throw new InvalidOperationException("ProceduralAudio should respect the sound enabled setting.");
+                "MusicType",
+                "PlayMusic",
+                "StopMusic",
+                "SetMusicDucked",
+                "RefreshSettings",
+                "_musicSource",
+                "_sfxSource",
+                "_sfxClipCache",
+                "AudioClip.Create",
+                "GameSettings.MusicEnabled",
+                "GameSettings.SfxEnabled",
+                "GameSettings.MusicVolume",
+                "GameSettings.SfxVolume"
+            };
+
+            foreach (string token in requiredAudioTokens)
+            {
+                if (!proceduralAudioSource.Contains(token))
+                {
+                    throw new InvalidOperationException("ProceduralAudio missing music/SFX setting hook: " + token);
+                }
+            }
+
+            string[] requiredSettingsUiTokens =
+            {
+                "MusicToggleButton",
+                "MusicVolumeButton",
+                "SfxToggleButton",
+                "SfxVolumeButton"
+            };
+
+            foreach (string token in requiredSettingsUiTokens)
+            {
+                if (!runtimeUiSource.Contains(token))
+                {
+                    throw new InvalidOperationException("Settings UI missing split audio control: " + token);
+                }
             }
         }
 
@@ -585,6 +971,7 @@ namespace ColorGateRush.EditorTools
                 "BackgroundRoot",
                 "TrackVisualRoot",
                 "TrackEdgeRail",
+                "TrackSideLightStrip",
                 "TrackRhythmStripe",
                 "ShardGlow",
                 "ShardVisualAnimator",
@@ -596,6 +983,11 @@ namespace ColorGateRush.EditorTools
                 "RenderSettings.skybox = null",
                 "ScreenPanelColor",
                 "ButtonColor",
+                "ScaledParticleCount",
+                "CollectBurst",
+                "GateBurst",
+                "FinishBurst",
+                "FailBurst",
                 "Apply Visual Theme"
             };
 

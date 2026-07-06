@@ -77,7 +77,7 @@ The final Codex response should include:
 - Validate the HUD shows 3-star remaining score and result screens show 3-star shortfall when needed.
 - Validate finish completion does not apply a hidden score multiplier before star rating.
 - Validate Main Menu Start opens Stage Select and does not directly start gameplay.
-- Validate Main Menu Settings opens Sound, Camera Shake, Color Assist, and Reset Progress controls.
+- Validate Main Menu Settings opens Music, Music Volume, SFX, SFX Volume, Camera Shake, Color Assist, and Reset Progress controls.
 - Validate gameplay starts only from an unlocked Stage Select button.
 - Validate Stage 1 first entry shows the tutorial until the player presses OK.
 - Validate Playing can enter Paused through the HUD Pause button or ESC/P.
@@ -97,7 +97,11 @@ The final Codex response should include:
 - Confirm persistent center gameplay guide text does not remain during normal play.
 - Confirm PlayerPrefs keys use the `CGR_` prefix.
 - Confirm Reset Local Progress deletes only `CGR_` keys and never calls `PlayerPrefs.DeleteAll`.
-- Confirm Sound Off prevents procedural SFX playback.
+- Confirm Music Off stops procedural BGM without disabling SFX.
+- Confirm SFX Off prevents collect/gate/hit/result one-shot sounds.
+- Confirm Music/SFX volume steps update playback and use `CGR_` PlayerPrefs keys.
+- Confirm menu/gameplay BGM does not overlap after menu, pause, retry, failed, and completed transitions.
+- Confirm pause/tutorial ducked music volume returns to normal when leaving those states.
 - Confirm Camera Shake Off prevents hit/finish shake.
 - Confirm Color Assist uses color-specific primitive shapes and high-contrast support without external sprites.
 - Confirm shards and the player no longer create black TextMesh symbol overlays.
@@ -107,7 +111,7 @@ The final Codex response should include:
 - Confirm `Tools/Color Gate Rush/Apply Visual Theme` applies camera background, fog, ambient, and directional light settings without external assets.
 - Confirm default Unity skybox appearance is suppressed through code-defined background/fog settings.
 - Confirm generated `BackgroundRoot` and `TrackVisualRoot` objects appear under the generated level.
-- Confirm track rails, lane separators, edge glow, and rhythm stripes do not add blocking colliders.
+- Confirm track rails, lane separators, edge glow, side light strips, and rhythm stripes do not add blocking colliders.
 - Confirm obstacle warning stripes/spikes, gate cue strips, and finish checker tiles are visual-only.
 - Confirm shard glow and bob/spin animation preserve row/lane alignment and trigger collection.
 - Confirm ParticleSystem bursts remain short, low-count, and readable on mobile.
@@ -119,7 +123,8 @@ The final Codex response should include:
 - `Tools/Color Gate Rush/Validate Build`: release-oriented alias for the same validation.
 - `Tools/Color Gate Rush/Validate Visual Polish`: static check for theme, world polish hooks, HUD contrast, and legacy symbol removal.
 - `Tools/Color Gate Rush/Generate Balance Report`: generate Stage 1-30 balance summaries in an isolated scene.
+- `Tools/Color Gate Rush/Generate Release Readiness Report`: summarize Android/WebGL static readiness, hard failures, warnings, and manual checks without running a build.
 - `Tools/Color Gate Rush/Apply Visual Theme`: apply code-defined visual tone to the open scene.
 - `Tools/Color Gate Rush/Reset Local Progress`: delete only Color Gate Rush progress keys.
 
-Release-candidate sign-off should run Validate Build, Generate Balance Report, and Reset Local Progress manually in the Unity Editor before packaging.
+Release-candidate sign-off should run Validate Build, Generate Balance Report, Generate Release Readiness Report, and Reset Local Progress manually in the Unity Editor before packaging. Follow `docs/release_readiness_checklist.md` for Android/WebGL build preparation.
