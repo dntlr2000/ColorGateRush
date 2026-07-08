@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace ColorGateRush
 {
@@ -268,12 +269,21 @@ namespace ColorGateRush
                 : SolidMaterial("fallback_runtime_visible" + ThemeSuffix(), Color.white, 0f);
             renderer.sharedMaterial = safeMaterial;
             renderer.enabled = true;
+            ApplyShadowPolicy(renderer, safeMaterial);
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             if (!RuntimeMaterialProvider.IsMaterialUsable(material))
             {
                 Debug.LogWarning("Applied fallback material for procedural object: " + context);
             }
 #endif
+        }
+
+        // Restores lighting detail for opaque generated meshes while keeping transparent VFX/panels shadow-free.
+        private static void ApplyShadowPolicy(Renderer renderer, Material material)
+        {
+            bool opaque = material != null && material.renderQueue < 3000;
+            renderer.shadowCastingMode = opaque ? ShadowCastingMode.On : ShadowCastingMode.Off;
+            renderer.receiveShadows = opaque;
         }
 
         // Disables a primitive collider so decorative objects cannot affect gameplay.

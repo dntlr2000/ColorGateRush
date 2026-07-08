@@ -58,6 +58,8 @@ Runtime mesh objects are created with explicit `GameObject` + `MeshFilter` + `Me
 - `VisualTheme` centralizes the candy-neon palette for background, track, hazards, finish, HUD, and VFX.
 - `RuntimeMaterialProvider` centralizes URP-compatible shader/material creation for generated objects.
 - Runtime base materials live under `Assets/_Project/Resources/ColorGateRush/Materials`, so Android/WebGL/PC builds include the limited shader variants actually used by generated objects.
+- Opaque generated meshes use `Universal Render Pipeline/Simple Lit` through `CGR_SimpleLitOpaque.mat` to keep lighting and shadows without pulling in full URP/Lit variants.
+- Transparent panels and ParticleSystem feedback stay on limited `URP/Unlit` materials for build safety.
 - `Universal Render Pipeline/Lit` is not placed in Graphics Settings Always Included Shaders because its variant count can break Android builds.
 - 30 stages cycle through five procedural theme variations without external textures or skyboxes.
 - The default Unity skybox feel is replaced by camera color, fog, ambient light, directional light, and procedural backdrop panels.
@@ -107,6 +109,6 @@ Unity menu:
 
 Manual QA should verify MainMenu to StageSelect, Stage unlocks, pause/resume, no automatic restart, row fairness, star targets, Music/SFX settings, Stage 1 tutorial, and the visual polish checklist for HUD contrast, track readability, shard/obstacle/gate/finish clarity, BGM/sting transitions, mobile-safe VFX, Android pink-material absence, and PC renderer visibility.
 
-If Android shows pink materials, run `Validate Runtime Visuals`, confirm `Universal Render Pipeline/Lit` is absent from Always Included Shaders, and confirm the Resources material assets exist under `Assets/_Project/Resources/ColorGateRush/Materials`. If a PC build hides generated objects, use a Development Build and check the runtime visual self-check log for renderer, mesh, material, collider, camera culling mask, and far clip counts.
+If Android shows pink materials, run `Validate Runtime Visuals`, confirm `Universal Render Pipeline/Lit` is absent from Always Included Shaders, and confirm the Resources material assets exist under `Assets/_Project/Resources/ColorGateRush/Materials`. If visual depth looks flat, confirm opaque meshes are using `CGR_SimpleLitOpaque` and renderer shadow casting/receiving is enabled. If a PC build hides generated objects, use a Development Build and check the runtime visual self-check log for renderer, mesh, material, collider, camera culling mask, and far clip counts.
 
 For Android/WebGL packaging preparation, follow `docs/release_readiness_checklist.md`. It covers Validate Build, Balance Report, Release Readiness Report, APK/AAB usage, keystore safety, WebGL browser checks, and device smoke tests.

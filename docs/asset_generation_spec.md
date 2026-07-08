@@ -22,13 +22,14 @@ No external art, audio, font, model, prefab, video, or paid/free Asset Store pac
 
 Use code-created material instances cloned from project-owned base materials through `RuntimeMaterialProvider`:
 
-1. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_UnlitOpaque.mat`
+1. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_SimpleLitOpaque.mat`
 2. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_UnlitTransparent.mat`
 3. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_ParticleUnlit.mat`
 
 These material assets reference only limited URP shader variants:
 
-- `Universal Render Pipeline/Unlit` for procedural world geometry.
+- `Universal Render Pipeline/Simple Lit` for opaque procedural world geometry that should receive lighting and shadows.
+- `Universal Render Pipeline/Unlit` for transparent panels and low-risk fallback geometry.
 - `Universal Render Pipeline/Particles/Unlit` for ParticleSystem feedback.
 
 Palette:
@@ -44,6 +45,8 @@ Palette:
 `VisualTheme` is the source of truth for background, fog, track, obstacle, finish, HUD, and VFX colors. High contrast mode returns an alternate code-defined theme without creating ScriptableObject assets. Stage configs cycle through five code-defined theme variations by `themeIndex`.
 
 Required URP shaders are included through Resources material asset references, not by adding full URP shaders to Graphics Settings Always Included Shaders. `Universal Render Pipeline/Lit` must not be added to Always Included Shaders because it can generate too many Android shader variants. Runtime gameplay code should not scatter direct shader lookup calls outside `RuntimeMaterialProvider`; provider fallback lookup exists only for diagnostics when the Resources material assets are missing.
+
+Opaque generated renderers explicitly cast and receive shadows. Transparent panels, glows, and particles do not cast shadows.
 
 If a later polish pass needs manual shader variant control, use a ShaderVariantCollection containing only the exact variants used by the game. Do not include the entire URP/Lit shader.
 

@@ -6,7 +6,7 @@ namespace ColorGateRush
     public static class RuntimeMaterialProvider
     {
         private const string MaterialRoot = "ColorGateRush/Materials/";
-        private const string OpaqueBaseMaterialPath = MaterialRoot + "CGR_UnlitOpaque";
+        private const string OpaqueBaseMaterialPath = MaterialRoot + "CGR_SimpleLitOpaque";
         private const string TransparentBaseMaterialPath = MaterialRoot + "CGR_UnlitTransparent";
         private const string ParticleBaseMaterialPath = MaterialRoot + "CGR_ParticleUnlit";
 
@@ -17,7 +17,7 @@ namespace ColorGateRush
         // Creates an opaque runtime material from the project shader provider.
         public static Material CreateOpaque(string name, Color color, float emissionStrength)
         {
-            Material material = CreateMaterialFromBase(name, GetOpaqueBaseMaterial(), "Universal Render Pipeline/Unlit", "Sprites/Default", "UI/Default");
+            Material material = CreateMaterialFromBase(name, GetOpaqueBaseMaterial(), "Universal Render Pipeline/Simple Lit", "Universal Render Pipeline/Unlit", "Sprites/Default", "UI/Default");
             SetMaterialColor(material, color);
             ConfigureLitSurface(material, color, emissionStrength);
             ValidateMaterial(material, name);

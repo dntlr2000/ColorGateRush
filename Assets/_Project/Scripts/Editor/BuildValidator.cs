@@ -1190,11 +1190,12 @@ namespace ColorGateRush.EditorTools
 
             string[] providerRequiredTokens =
             {
+                "Universal Render Pipeline/Simple Lit",
                 "Universal Render Pipeline/Unlit",
                 "Universal Render Pipeline/Particles/Unlit",
                 "Resources.Load<Material>",
                 "Resources.GetBuiltinResource<Material>",
-                "CGR_UnlitOpaque",
+                "CGR_SimpleLitOpaque",
                 "CGR_UnlitTransparent",
                 "CGR_ParticleUnlit",
                 "IsMaterialUsable"
@@ -1301,10 +1302,11 @@ namespace ColorGateRush.EditorTools
 
             string unlitGuid = "650dd9526735d5b46b79224bc6e94025";
             string particleUnlitGuid = "0406db5a14f94604a8c57ccfbc9f3b46";
+            string simpleLitGuid = "8d2bb70cbf9db8d4da26e15b26e74248";
             string litGuid = "933532a4fcc9baf4fa0491de14d08ed7";
             Dictionary<string, string> requiredMaterials = new Dictionary<string, string>
             {
-                { "CGR_UnlitOpaque.mat", unlitGuid },
+                { "CGR_SimpleLitOpaque.mat", simpleLitGuid },
                 { "CGR_UnlitTransparent.mat", unlitGuid },
                 { "CGR_ParticleUnlit.mat", particleUnlitGuid }
             };

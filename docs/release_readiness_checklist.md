@@ -38,6 +38,7 @@ Hard failures must be fixed before packaging. Warnings identify manual release d
 - `Universal Render Pipeline/Lit` is absent from Graphics Settings Always Included Shaders.
 - Runtime base materials exist under `Assets/_Project/Resources/ColorGateRush/Materials`.
 - Pink-material prevention uses Resources material asset references, not full URP shader Always Included entries.
+- Opaque runtime objects use the `CGR_SimpleLitOpaque` material reference and still show lighting/shadow depth in device builds.
 - Scripting Backend and target architectures are reviewed; Google Play release builds should include ARM64.
 - Development Build is off for release-candidate distribution builds.
 - Use APK for local device testing.
@@ -98,7 +99,8 @@ Hard failures must be fixed before packaging. Warnings identify manual release d
 
 - If pink procedural materials appear, rerun `Validate Runtime Visuals`.
 - Confirm `ProjectSettings/GraphicsSettings.asset` does not include the URP/Lit shader GUID.
-- Confirm `Assets/_Project/Resources/ColorGateRush/Materials` contains `CGR_UnlitOpaque`, `CGR_UnlitTransparent`, and `CGR_ParticleUnlit`.
+- Confirm `Assets/_Project/Resources/ColorGateRush/Materials` contains `CGR_SimpleLitOpaque`, `CGR_UnlitTransparent`, and `CGR_ParticleUnlit`.
+- Confirm opaque objects cast/receive shadows while transparent gate/background/VFX objects remain shadow-free.
 - Confirm procedural objects are created through `ProceduralFactory.Primitive` and generic collider helpers.
 - Confirm no source file contains `AddComponent("...")` or `GameObject.CreatePrimitive`.
 - If manual variant management becomes necessary, use a ShaderVariantCollection with only the exact variants used by Color Gate Rush. Do not add full URP/Lit to Always Included Shaders.
