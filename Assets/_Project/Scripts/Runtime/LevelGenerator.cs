@@ -69,6 +69,7 @@ namespace ColorGateRush
                 ConfigureCamera(runner.transform);
             }
 
+            ValidateSpawnedRuntimeObjects(runner);
             _lastReport.RecordScoreEstimate(StageScoreAnalyzer.AnalyzeReport(stage, _lastReport));
             ValidateGeneratedLevel(_lastReport);
             return runner;
@@ -278,14 +279,13 @@ namespace ColorGateRush
 
             foreach (float laneX in GameConstants.LaneX)
             {
-                ProceduralFactory.Primitive(
+                ProceduralFactory.VisualPrimitive(
                     PrimitiveType.Cube,
                     "LaneStrip_" + laneX.ToString("0.0"),
-                    _levelRoot,
+                    visualRoot,
                     new Vector3(laneX, 0.01f, stage.TrackLength * 0.5f),
                     new Vector3(0.08f, 0.04f, stage.TrackLength),
-                    ProceduralFactory.LaneStripMaterial(),
-                    isTrigger: false);
+                    ProceduralFactory.LaneStripMaterial());
             }
 
             CreateTrackPolish(visualRoot, stage);
@@ -868,9 +868,9 @@ namespace ColorGateRush
             ProceduralFactory.CreateColorShapeMarker(_levelRoot, "GateShape_" + index, new Vector3(0f, 3.05f, z - 0.35f), target, 0.7f);
 
             Material frameMaterial = ProceduralFactory.ColorMaterial(target);
-            ProceduralFactory.Primitive(PrimitiveType.Cube, "GateLeftPost_" + index, _levelRoot, new Vector3(-3.8f, 1.2f, z), new Vector3(0.25f, 2.4f, 0.35f), frameMaterial, false);
-            ProceduralFactory.Primitive(PrimitiveType.Cube, "GateRightPost_" + index, _levelRoot, new Vector3(3.8f, 1.2f, z), new Vector3(0.25f, 2.4f, 0.35f), frameMaterial, false);
-            ProceduralFactory.Primitive(PrimitiveType.Cube, "GateTop_" + index, _levelRoot, new Vector3(0f, 2.45f, z), new Vector3(7.8f, 0.25f, 0.35f), frameMaterial, false);
+            ProceduralFactory.VisualPrimitive(PrimitiveType.Cube, "GateLeftPost_" + index, _levelRoot, new Vector3(-3.8f, 1.2f, z), new Vector3(0.25f, 2.4f, 0.35f), frameMaterial);
+            ProceduralFactory.VisualPrimitive(PrimitiveType.Cube, "GateRightPost_" + index, _levelRoot, new Vector3(3.8f, 1.2f, z), new Vector3(0.25f, 2.4f, 0.35f), frameMaterial);
+            ProceduralFactory.VisualPrimitive(PrimitiveType.Cube, "GateTop_" + index, _levelRoot, new Vector3(0f, 2.45f, z), new Vector3(7.8f, 0.25f, 0.35f), frameMaterial);
             CreateGateVisualCues(index, z, target);
         }
 
@@ -920,9 +920,9 @@ namespace ColorGateRush
             trigger.AddComponent<FinishLine>();
 
             Material finishMaterial = ProceduralFactory.FinishMaterial();
-            ProceduralFactory.Primitive(PrimitiveType.Cube, "FinishLeftPost", _levelRoot, new Vector3(-3.8f, 1.35f, z), new Vector3(0.35f, 2.7f, 0.45f), finishMaterial, false);
-            ProceduralFactory.Primitive(PrimitiveType.Cube, "FinishRightPost", _levelRoot, new Vector3(3.8f, 1.35f, z), new Vector3(0.35f, 2.7f, 0.45f), finishMaterial, false);
-            ProceduralFactory.Primitive(PrimitiveType.Cube, "FinishTop", _levelRoot, new Vector3(0f, 2.75f, z), new Vector3(7.8f, 0.35f, 0.45f), finishMaterial, false);
+            ProceduralFactory.VisualPrimitive(PrimitiveType.Cube, "FinishLeftPost", _levelRoot, new Vector3(-3.8f, 1.35f, z), new Vector3(0.35f, 2.7f, 0.45f), finishMaterial);
+            ProceduralFactory.VisualPrimitive(PrimitiveType.Cube, "FinishRightPost", _levelRoot, new Vector3(3.8f, 1.35f, z), new Vector3(0.35f, 2.7f, 0.45f), finishMaterial);
+            ProceduralFactory.VisualPrimitive(PrimitiveType.Cube, "FinishTop", _levelRoot, new Vector3(0f, 2.75f, z), new Vector3(7.8f, 0.35f, 0.45f), finishMaterial);
             CreateFinishDetails(z);
             _lastReport.RecordFinish();
         }
@@ -1000,6 +1000,9 @@ namespace ColorGateRush
                 camera.tag = "MainCamera";
             }
 
+            camera.cullingMask = ~0;
+            camera.nearClipPlane = 0.05f;
+            camera.farClipPlane = Mathf.Max(camera.farClipPlane, _trackLength + 90f);
             EnsureAudioListener(camera.gameObject);
 
             CameraFollow follow = camera.GetComponent<CameraFollow>();
@@ -1018,6 +1021,64 @@ namespace ColorGateRush
             {
                 cameraGo.AddComponent<AudioListener>();
             }
+        }
+
+        // Reports generated renderer/material/collider/camera health once in editor and development builds.
+        private void ValidateSpawnedRuntimeObjects(LaneRunnerController runner)
+        {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (_levelRoot == null)
+            {
+                Debug.LogWarning("Runtime visual self-check skipped: generated level root is missing.");
+                return;
+            }
+
+            MeshRenderer[] renderers = _levelRoot.GetComponentsInChildren<MeshRenderer>(true);
+            MeshFilter[] meshFilters = _levelRoot.GetComponentsInChildren<MeshFilter>(true);
+            Collider[] colliders = _levelRoot.GetComponentsInChildren<Collider>(true);
+            int invalidMaterials = 0;
+            int missingMeshes = 0;
+            int inactiveObjects = 0;
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                if (renderers[i] == null || !renderers[i].gameObject.activeSelf)
+                {
+                    inactiveObjects++;
+                }
+
+                if (renderers[i] == null || !RuntimeMaterialProvider.IsMaterialUsable(renderers[i].sharedMaterial))
+                {
+                    invalidMaterials++;
+                }
+            }
+
+            for (int i = 0; i < meshFilters.Length; i++)
+            {
+                if (meshFilters[i] == null || meshFilters[i].sharedMesh == null)
+                {
+                    missingMeshes++;
+                }
+            }
+
+            Camera camera = Camera.main;
+            string cameraSummary = camera == null
+                ? "camera=missing"
+                : "camera=" + camera.name + " cullingMask=" + camera.cullingMask + " farClip=" + camera.farClipPlane.ToString("0.0");
+            Debug.Log(
+                "Color Gate Rush runtime visual self-check: renderers=" + renderers.Length
+                + ", meshFilters=" + meshFilters.Length
+                + ", colliders=" + colliders.Length
+                + ", invalidMaterials=" + invalidMaterials
+                + ", missingMeshes=" + missingMeshes
+                + ", inactiveRenderers=" + inactiveObjects
+                + ", runner=" + (runner != null ? runner.name : "missing")
+                + ", " + cameraSummary);
+
+            if (renderers.Length < 20 || invalidMaterials > 0 || missingMeshes > 0 || runner == null || camera == null)
+            {
+                Debug.LogWarning("Color Gate Rush runtime visual self-check found a possible build visibility issue.");
+            }
+#endif
         }
     }
 }

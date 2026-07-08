@@ -9,9 +9,10 @@ Run these in the Unity Editor before any manual build:
 1. `Tools/Color Gate Rush/Bootstrap Project`
 2. Open `Assets/_Project/Scenes/Main.unity`
 3. `Tools/Color Gate Rush/Validate Build`
-4. `Tools/Color Gate Rush/Generate Balance Report`
-5. `Tools/Color Gate Rush/Generate Release Readiness Report`
-6. `Tools/Color Gate Rush/Apply Visual Theme`
+4. `Tools/Color Gate Rush/Validate Runtime Visuals`
+5. `Tools/Color Gate Rush/Generate Balance Report`
+6. `Tools/Color Gate Rush/Generate Release Readiness Report`
+7. `Tools/Color Gate Rush/Apply Visual Theme`
 
 Hard failures must be fixed before packaging. Warnings identify manual release decisions such as package name, signing, icon, store metadata, and real device tests.
 
@@ -31,7 +32,12 @@ Hard failures must be fixed before packaging. Warnings identify manual release d
 - Company name is not `DefaultCompany`.
 - Application Identifier is a unique reverse-DNS id, not a Unity template id.
 - Bundle version and Android version code are intentionally set.
-- Portrait-first orientation is selected for the vertical runner UI.
+- Portrait-only orientation is selected for the vertical runner UI.
+- `Validate Runtime Visuals` passes before device packaging.
+- Runtime generated components use generic component creation, not `AddComponent(string)` or `GameObject.CreatePrimitive`.
+- `Universal Render Pipeline/Lit` is absent from Graphics Settings Always Included Shaders.
+- Runtime base materials exist under `Assets/_Project/Resources/ColorGateRush/Materials`.
+- Pink-material prevention uses Resources material asset references, not full URP shader Always Included entries.
 - Scripting Backend and target architectures are reviewed; Google Play release builds should include ARM64.
 - Development Build is off for release-candidate distribution builds.
 - Use APK for local device testing.
@@ -82,7 +88,27 @@ Hard failures must be fixed before packaging. Warnings identify manual release d
 - Collect, gate, hit, and finish VFX stay readable and short.
 - Menu/gameplay BGM does not overlap across Start, Pause, Retry, Failed, Completed, StageSelect, and MainMenu transitions.
 - Music Off, SFX Off, Music Volume, and SFX Volume settings work independently.
+- Android Logcat does not contain `Can't add component because 'BoxCollider' doesn't exist!`.
+- Android generated materials are not pink.
+- PC builds show player, track, shards, obstacles, gates, finish, VFX, and HUD after starting Stage 1.
+- Development Build runtime visual self-check reports healthy renderer, mesh, material, collider, and camera counts.
 - No obvious frame drops, overheating, or memory growth appears during several retries.
+
+## Android Pink Material / Component Log Checks
+
+- If pink procedural materials appear, rerun `Validate Runtime Visuals`.
+- Confirm `ProjectSettings/GraphicsSettings.asset` does not include the URP/Lit shader GUID.
+- Confirm `Assets/_Project/Resources/ColorGateRush/Materials` contains `CGR_UnlitOpaque`, `CGR_UnlitTransparent`, and `CGR_ParticleUnlit`.
+- Confirm procedural objects are created through `ProceduralFactory.Primitive` and generic collider helpers.
+- Confirm no source file contains `AddComponent("...")` or `GameObject.CreatePrimitive`.
+- If manual variant management becomes necessary, use a ShaderVariantCollection with only the exact variants used by Color Gate Rush. Do not add full URP/Lit to Always Included Shaders.
+
+## PC Build Visibility Checks
+
+- Build a Development Build for the first repro pass.
+- Start Stage 1 from Stage Select.
+- Check the log line `Color Gate Rush runtime visual self-check`.
+- Investigate immediately if renderer count is low, invalid material count is nonzero, missing mesh count is nonzero, or the camera culling/far clip summary looks wrong.
 
 ## Save/Progress Test Scenario
 

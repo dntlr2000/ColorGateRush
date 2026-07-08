@@ -6,6 +6,7 @@ namespace ColorGateRush
     public static class ProceduralFactory
     {
         private static readonly Dictionary<string, Material> MaterialCache = new Dictionary<string, Material>();
+        private static readonly Dictionary<PrimitiveType, Mesh> MeshCache = new Dictionary<PrimitiveType, Mesh>();
         private static readonly Queue<TextMesh> FloatingTextPool = new Queue<TextMesh>();
 
         // Returns a cached solid material for a gameplay color.
@@ -93,6 +94,20 @@ namespace ColorGateRush
             return SolidMaterial("finish_dark" + ThemeSuffix(), VisualTheme.Current().TrackEdgeColor);
         }
 
+        // Returns the cached material used by runtime ParticleSystem feedback.
+        public static Material ParticleMaterial()
+        {
+            const string key = "particle_runtime";
+            if (MaterialCache.TryGetValue(key, out Material cached))
+            {
+                return cached;
+            }
+
+            Material material = RuntimeMaterialProvider.CreateParticle("M_" + key);
+            MaterialCache[key] = material;
+            return material;
+        }
+
         // Creates or returns a cached opaque material with shader fallback support.
         public static Material SolidMaterial(string key, Color color, float emissionStrength = 0f)
         {
@@ -101,10 +116,7 @@ namespace ColorGateRush
                 return cached;
             }
 
-            Material material = new Material(FindDefaultShader());
-            material.name = "M_" + key;
-            SetMaterialColor(material, color);
-            ConfigureLitSurface(material, color, emissionStrength);
+            Material material = RuntimeMaterialProvider.CreateOpaque("M_" + key, color, emissionStrength);
             MaterialCache[key] = material;
             return material;
         }
@@ -120,15 +132,12 @@ namespace ColorGateRush
 
             Color transparent = color;
             transparent.a = alpha;
-            Material material = new Material(FindDefaultShader());
-            material.name = "M_" + cacheKey;
-            SetMaterialColor(material, transparent);
-            ConfigureTransparency(material);
+            Material material = RuntimeMaterialProvider.CreateTransparent("M_" + cacheKey, transparent, alpha);
             MaterialCache[cacheKey] = material;
             return material;
         }
 
-        // Creates a Unity primitive with material and trigger configuration applied.
+        // Creates a procedural primitive with generic component creation and trigger configuration applied.
         public static GameObject Primitive(
             PrimitiveType type,
             string name,
@@ -138,24 +147,26 @@ namespace ColorGateRush
             Material material,
             bool isTrigger)
         {
-            GameObject go = GameObject.CreatePrimitive(type);
+            GameObject go = new GameObject(name);
             go.name = name;
             go.transform.SetParent(parent, worldPositionStays: false);
             go.transform.position = position;
-            go.transform.localScale = scale;
+            go.transform.localScale = SanitizeScale(scale);
 
-            Renderer renderer = go.GetComponent<Renderer>();
-            if (renderer != null && material != null)
-            {
-                renderer.sharedMaterial = material;
-            }
+            MeshFilter meshFilter = EnsureMeshFilter(go);
+            meshFilter.sharedMesh = GetPrimitiveMesh(type);
 
-            Collider collider = go.GetComponent<Collider>();
+            MeshRenderer renderer = EnsureMeshRenderer(go);
+            renderer.enabled = true;
+            ApplyMaterial(renderer, material, name);
+
+            Collider collider = EnsureColliderForPrimitive(go, type);
             if (collider != null)
             {
                 collider.isTrigger = isTrigger;
             }
 
+            ValidateGeneratedVisual(go, name, requireCollider: true);
             return go;
         }
 
@@ -171,6 +182,41 @@ namespace ColorGateRush
             GameObject go = Primitive(type, name, parent, position, scale, material, isTrigger: false);
             DisableCollider(go);
             return go;
+        }
+
+        // Ensures a MeshFilter exists without using string-based component creation.
+        public static MeshFilter EnsureMeshFilter(GameObject target)
+        {
+            MeshFilter meshFilter = target.GetComponent<MeshFilter>();
+            return meshFilter != null ? meshFilter : target.AddComponent<MeshFilter>();
+        }
+
+        // Ensures a MeshRenderer exists without using string-based component creation.
+        public static MeshRenderer EnsureMeshRenderer(GameObject target)
+        {
+            MeshRenderer meshRenderer = target.GetComponent<MeshRenderer>();
+            return meshRenderer != null ? meshRenderer : target.AddComponent<MeshRenderer>();
+        }
+
+        // Ensures a BoxCollider exists without using string-based component creation.
+        public static BoxCollider EnsureBoxCollider(GameObject target)
+        {
+            BoxCollider collider = target.GetComponent<BoxCollider>();
+            return collider != null ? collider : target.AddComponent<BoxCollider>();
+        }
+
+        // Ensures a SphereCollider exists without using string-based component creation.
+        public static SphereCollider EnsureSphereCollider(GameObject target)
+        {
+            SphereCollider collider = target.GetComponent<SphereCollider>();
+            return collider != null ? collider : target.AddComponent<SphereCollider>();
+        }
+
+        // Ensures a CapsuleCollider exists without using string-based component creation.
+        public static CapsuleCollider EnsureCapsuleCollider(GameObject target)
+        {
+            CapsuleCollider collider = target.GetComponent<CapsuleCollider>();
+            return collider != null ? collider : target.AddComponent<CapsuleCollider>();
         }
 
         // Creates a collectible shard whose silhouette is driven by the shared color visual profile.
@@ -209,6 +255,27 @@ namespace ColorGateRush
             return accent;
         }
 
+        // Assigns a material while falling back to a visible magenta-free runtime material if needed.
+        public static void ApplyMaterial(Renderer renderer, Material material, string context)
+        {
+            if (renderer == null)
+            {
+                return;
+            }
+
+            Material safeMaterial = RuntimeMaterialProvider.IsMaterialUsable(material)
+                ? material
+                : SolidMaterial("fallback_runtime_visible" + ThemeSuffix(), Color.white, 0f);
+            renderer.sharedMaterial = safeMaterial;
+            renderer.enabled = true;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (!RuntimeMaterialProvider.IsMaterialUsable(material))
+            {
+                Debug.LogWarning("Applied fallback material for procedural object: " + context);
+            }
+#endif
+        }
+
         // Disables a primitive collider so decorative objects cannot affect gameplay.
         public static void DisableCollider(GameObject target)
         {
@@ -222,6 +289,47 @@ namespace ColorGateRush
             {
                 collider.enabled = false;
             }
+        }
+
+        // Validates generated render/collider state in editor and development builds only.
+        public static void ValidateGeneratedVisual(GameObject target, string context, bool requireCollider)
+        {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (target == null)
+            {
+                Debug.LogWarning("Generated visual is null: " + context);
+                return;
+            }
+
+            MeshRenderer renderer = target.GetComponent<MeshRenderer>();
+            MeshFilter meshFilter = target.GetComponent<MeshFilter>();
+            Collider collider = target.GetComponent<Collider>();
+            Vector3 scale = target.transform.lossyScale;
+            if (!target.activeSelf || renderer == null || !renderer.enabled)
+            {
+                Debug.LogWarning("Generated object has no enabled renderer: " + context);
+            }
+
+            if (meshFilter == null || meshFilter.sharedMesh == null)
+            {
+                Debug.LogWarning("Generated object has no mesh: " + context);
+            }
+
+            if (!RuntimeMaterialProvider.IsMaterialUsable(renderer != null ? renderer.sharedMaterial : null))
+            {
+                Debug.LogWarning("Generated object has invalid material/shader: " + context);
+            }
+
+            if (requireCollider && collider == null)
+            {
+                Debug.LogWarning("Generated gameplay object has no collider: " + context);
+            }
+
+            if (Mathf.Abs(scale.x) < 0.0001f || Mathf.Abs(scale.y) < 0.0001f || Mathf.Abs(scale.z) < 0.0001f)
+            {
+                Debug.LogWarning("Generated object has near-zero scale: " + context);
+            }
+#endif
         }
 
         // Applies the active color material to an already-created visual object.
@@ -294,20 +402,16 @@ namespace ColorGateRush
                 return;
             }
 
-            GameObject glow = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            glow.name = "ShardGlow";
-            glow.transform.SetParent(shard.transform, false);
+            GameObject glow = VisualPrimitive(
+                PrimitiveType.Sphere,
+                "ShardGlow",
+                shard.transform,
+                Vector3.zero,
+                Vector3.one * 1.32f,
+                TransparentMaterial("shard_glow_" + colorId + ThemeSuffix(), GameConstants.ToUnityColor(colorId), VisualTheme.Current().ShardGlowAlpha));
             glow.transform.localPosition = Vector3.zero;
             glow.transform.localRotation = Quaternion.identity;
             glow.transform.localScale = Vector3.one * 1.32f;
-
-            Renderer renderer = glow.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                renderer.sharedMaterial = TransparentMaterial("shard_glow_" + colorId + ThemeSuffix(), GameConstants.ToUnityColor(colorId), VisualTheme.Current().ShardGlowAlpha);
-            }
-
-            DisableCollider(glow);
         }
 
         // Converts a color shape profile into a Unity primitive type.
@@ -353,6 +457,226 @@ namespace ColorGateRush
                 default:
                     return Quaternion.identity;
             }
+        }
+
+        // Returns a cached built-in mesh, or a procedural fallback mesh when built-in resources are unavailable.
+        private static Mesh GetPrimitiveMesh(PrimitiveType type)
+        {
+            if (MeshCache.TryGetValue(type, out Mesh cached) && cached != null)
+            {
+                return cached;
+            }
+
+            Mesh mesh = Resources.GetBuiltinResource<Mesh>(BuiltinMeshName(type));
+            if (mesh == null)
+            {
+                mesh = CreateFallbackMesh(type);
+            }
+
+            MeshCache[type] = mesh;
+            return mesh;
+        }
+
+        // Returns Unity's built-in mesh resource name for a primitive type.
+        private static string BuiltinMeshName(PrimitiveType type)
+        {
+            switch (type)
+            {
+                case PrimitiveType.Sphere:
+                    return "Sphere.fbx";
+                case PrimitiveType.Capsule:
+                    return "Capsule.fbx";
+                case PrimitiveType.Cylinder:
+                    return "Cylinder.fbx";
+                case PrimitiveType.Plane:
+                    return "Plane.fbx";
+                case PrimitiveType.Quad:
+                    return "Quad.fbx";
+                default:
+                    return "Cube.fbx";
+            }
+        }
+
+        // Creates a minimal procedural fallback mesh for player builds that cannot load a built-in primitive mesh.
+        private static Mesh CreateFallbackMesh(PrimitiveType type)
+        {
+            switch (type)
+            {
+                case PrimitiveType.Sphere:
+                    return BuildSphereMesh();
+                case PrimitiveType.Capsule:
+                case PrimitiveType.Cylinder:
+                    return BuildCylinderMesh();
+                case PrimitiveType.Plane:
+                case PrimitiveType.Quad:
+                    return BuildQuadMesh();
+                default:
+                    return BuildCubeMesh();
+            }
+        }
+
+        // Adds the gameplay collider that best matches the primitive silhouette.
+        private static Collider EnsureColliderForPrimitive(GameObject target, PrimitiveType type)
+        {
+            switch (type)
+            {
+                case PrimitiveType.Sphere:
+                    return EnsureSphereCollider(target);
+                case PrimitiveType.Capsule:
+                case PrimitiveType.Cylinder:
+                    return EnsureCapsuleCollider(target);
+                default:
+                    return EnsureBoxCollider(target);
+            }
+        }
+
+        // Clamps procedural scale away from zero so generated renderers cannot vanish.
+        private static Vector3 SanitizeScale(Vector3 scale)
+        {
+            return new Vector3(
+                Mathf.Abs(scale.x) < 0.0001f ? 0.0001f : scale.x,
+                Mathf.Abs(scale.y) < 0.0001f ? 0.0001f : scale.y,
+                Mathf.Abs(scale.z) < 0.0001f ? 0.0001f : scale.z);
+        }
+
+        // Builds a unit cube mesh for runtime fallback rendering.
+        private static Mesh BuildCubeMesh()
+        {
+            Mesh mesh = new Mesh();
+            mesh.name = "CGR_FallbackCube";
+            Vector3[] vertices =
+            {
+                new Vector3(-0.5f, -0.5f, 0.5f), new Vector3(0.5f, -0.5f, 0.5f), new Vector3(0.5f, 0.5f, 0.5f), new Vector3(-0.5f, 0.5f, 0.5f),
+                new Vector3(0.5f, -0.5f, -0.5f), new Vector3(-0.5f, -0.5f, -0.5f), new Vector3(-0.5f, 0.5f, -0.5f), new Vector3(0.5f, 0.5f, -0.5f),
+                new Vector3(-0.5f, 0.5f, 0.5f), new Vector3(0.5f, 0.5f, 0.5f), new Vector3(0.5f, 0.5f, -0.5f), new Vector3(-0.5f, 0.5f, -0.5f),
+                new Vector3(-0.5f, -0.5f, -0.5f), new Vector3(0.5f, -0.5f, -0.5f), new Vector3(0.5f, -0.5f, 0.5f), new Vector3(-0.5f, -0.5f, 0.5f),
+                new Vector3(0.5f, -0.5f, 0.5f), new Vector3(0.5f, -0.5f, -0.5f), new Vector3(0.5f, 0.5f, -0.5f), new Vector3(0.5f, 0.5f, 0.5f),
+                new Vector3(-0.5f, -0.5f, -0.5f), new Vector3(-0.5f, -0.5f, 0.5f), new Vector3(-0.5f, 0.5f, 0.5f), new Vector3(-0.5f, 0.5f, -0.5f)
+            };
+            int[] triangles =
+            {
+                0, 1, 2, 0, 2, 3,
+                4, 5, 6, 4, 6, 7,
+                8, 9, 10, 8, 10, 11,
+                12, 13, 14, 12, 14, 15,
+                16, 17, 18, 16, 18, 19,
+                20, 21, 22, 20, 22, 23
+            };
+            mesh.vertices = vertices;
+            mesh.triangles = triangles;
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        // Builds a low-poly sphere mesh for runtime fallback rendering.
+        private static Mesh BuildSphereMesh()
+        {
+            const int latSegments = 8;
+            const int lonSegments = 12;
+            List<Vector3> vertices = new List<Vector3>();
+            List<int> triangles = new List<int>();
+            for (int lat = 0; lat <= latSegments; lat++)
+            {
+                float theta = Mathf.PI * lat / latSegments;
+                float y = Mathf.Cos(theta) * 0.5f;
+                float radius = Mathf.Sin(theta) * 0.5f;
+                for (int lon = 0; lon <= lonSegments; lon++)
+                {
+                    float phi = 2f * Mathf.PI * lon / lonSegments;
+                    vertices.Add(new Vector3(Mathf.Cos(phi) * radius, y, Mathf.Sin(phi) * radius));
+                }
+            }
+
+            for (int lat = 0; lat < latSegments; lat++)
+            {
+                for (int lon = 0; lon < lonSegments; lon++)
+                {
+                    int current = lat * (lonSegments + 1) + lon;
+                    int next = current + lonSegments + 1;
+                    triangles.Add(current);
+                    triangles.Add(next);
+                    triangles.Add(current + 1);
+                    triangles.Add(current + 1);
+                    triangles.Add(next);
+                    triangles.Add(next + 1);
+                }
+            }
+
+            Mesh mesh = new Mesh();
+            mesh.name = "CGR_FallbackSphere";
+            mesh.SetVertices(vertices);
+            mesh.SetTriangles(triangles, 0);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        // Builds a low-poly cylinder mesh for runtime fallback rendering.
+        private static Mesh BuildCylinderMesh()
+        {
+            const int segments = 16;
+            List<Vector3> vertices = new List<Vector3>();
+            List<int> triangles = new List<int>();
+            for (int i = 0; i < segments; i++)
+            {
+                float angle = 2f * Mathf.PI * i / segments;
+                float x = Mathf.Cos(angle) * 0.5f;
+                float z = Mathf.Sin(angle) * 0.5f;
+                vertices.Add(new Vector3(x, -0.5f, z));
+                vertices.Add(new Vector3(x, 0.5f, z));
+            }
+
+            int bottomCenter = vertices.Count;
+            vertices.Add(new Vector3(0f, -0.5f, 0f));
+            int topCenter = vertices.Count;
+            vertices.Add(new Vector3(0f, 0.5f, 0f));
+            for (int i = 0; i < segments; i++)
+            {
+                int next = (i + 1) % segments;
+                int bottom = i * 2;
+                int top = bottom + 1;
+                int nextBottom = next * 2;
+                int nextTop = nextBottom + 1;
+                triangles.Add(bottom);
+                triangles.Add(top);
+                triangles.Add(nextTop);
+                triangles.Add(bottom);
+                triangles.Add(nextTop);
+                triangles.Add(nextBottom);
+                triangles.Add(bottomCenter);
+                triangles.Add(nextBottom);
+                triangles.Add(bottom);
+                triangles.Add(topCenter);
+                triangles.Add(top);
+                triangles.Add(nextTop);
+            }
+
+            Mesh mesh = new Mesh();
+            mesh.name = "CGR_FallbackCylinder";
+            mesh.SetVertices(vertices);
+            mesh.SetTriangles(triangles, 0);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        // Builds a unit quad mesh for runtime fallback rendering.
+        private static Mesh BuildQuadMesh()
+        {
+            Mesh mesh = new Mesh();
+            mesh.name = "CGR_FallbackQuad";
+            mesh.vertices = new[]
+            {
+                new Vector3(-0.5f, -0.5f, 0f),
+                new Vector3(0.5f, -0.5f, 0f),
+                new Vector3(0.5f, 0.5f, 0f),
+                new Vector3(-0.5f, 0.5f, 0f)
+            };
+            mesh.triangles = new[] { 0, 1, 2, 0, 2, 3 };
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
         }
 
         // Shows pooled floating score or feedback text near a gameplay event.
@@ -435,6 +759,7 @@ namespace ColorGateRush
             GameObject go = new GameObject("ParticleBurst");
             go.transform.position = position;
             ParticleSystem ps = go.AddComponent<ParticleSystem>();
+            ApplyParticleMaterial(ps);
             ParticleSystem.MainModule main = ps.main;
             main.startColor = color;
             main.startSize = size;
@@ -466,6 +791,7 @@ namespace ColorGateRush
             GameObject go = new GameObject("ParticleRingBurst");
             go.transform.position = position;
             ParticleSystem ps = go.AddComponent<ParticleSystem>();
+            ApplyParticleMaterial(ps);
             ParticleSystem.MainModule main = ps.main;
             main.startColor = color;
             main.startSize = size;
@@ -486,67 +812,18 @@ namespace ColorGateRush
             Object.Destroy(go, lifetime + 0.3f);
         }
 
-        // Chooses a render shader that works in URP first and falls back for built-in projects.
-        private static Shader FindDefaultShader()
+        // Assigns the explicit runtime particle material to prevent player-build shader fallback surprises.
+        private static void ApplyParticleMaterial(ParticleSystem particleSystem)
         {
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader != null)
-            {
-                return shader;
-            }
-
-            shader = Shader.Find("Standard");
-            if (shader != null)
-            {
-                return shader;
-            }
-
-            shader = Shader.Find("Diffuse");
-            if (shader != null)
-            {
-                return shader;
-            }
-
-            return Shader.Find("Hidden/InternalErrorShader");
-        }
-
-        // Applies a color to whichever color property the active shader exposes.
-        private static void SetMaterialColor(Material material, Color color)
-        {
-            if (material.HasProperty("_BaseColor"))
-            {
-                material.SetColor("_BaseColor", color);
-            }
-
-            if (material.HasProperty("_Color"))
-            {
-                material.SetColor("_Color", color);
-            }
-        }
-
-        // Applies safe smoothness/emission properties when the active shader supports them.
-        private static void ConfigureLitSurface(Material material, Color baseColor, float emissionStrength)
-        {
-            if (material.HasProperty("_Smoothness"))
-            {
-                material.SetFloat("_Smoothness", 0.68f);
-            }
-
-            if (material.HasProperty("_Metallic"))
-            {
-                material.SetFloat("_Metallic", 0f);
-            }
-
-            if (emissionStrength <= 0f)
+            if (particleSystem == null)
             {
                 return;
             }
 
-            Color emissionColor = baseColor * emissionStrength;
-            if (material.HasProperty("_EmissionColor"))
+            ParticleSystemRenderer renderer = particleSystem.GetComponent<ParticleSystemRenderer>();
+            if (renderer != null)
             {
-                material.SetColor("_EmissionColor", emissionColor);
-                material.EnableKeyword("_EMISSION");
+                renderer.sharedMaterial = ParticleMaterial();
             }
         }
 
@@ -554,47 +831,6 @@ namespace ColorGateRush
         private static string ThemeSuffix()
         {
             return "_theme" + VisualTheme.ActiveThemeIndex + (GameSettings.ColorAssistEnabled ? "_assist" : "_default");
-        }
-
-        // Enables alpha blending flags for URP and built-in Standard compatible materials.
-        private static void ConfigureTransparency(Material material)
-        {
-            material.renderQueue = 3000;
-
-            if (material.HasProperty("_Mode"))
-            {
-                material.SetFloat("_Mode", 3f);
-            }
-
-            if (material.HasProperty("_Surface"))
-            {
-                material.SetFloat("_Surface", 1f);
-            }
-
-            if (material.HasProperty("_Blend"))
-            {
-                material.SetFloat("_Blend", 0f);
-            }
-
-            if (material.HasProperty("_SrcBlend"))
-            {
-                material.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
-            }
-
-            if (material.HasProperty("_DstBlend"))
-            {
-                material.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-            }
-
-            if (material.HasProperty("_ZWrite"))
-            {
-                material.SetFloat("_ZWrite", 0f);
-            }
-
-            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-            material.DisableKeyword("_ALPHATEST_ON");
-            material.EnableKeyword("_ALPHABLEND_ON");
-            material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
         }
     }
 }

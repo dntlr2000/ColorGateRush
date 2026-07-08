@@ -8,7 +8,7 @@ No external art, audio, font, model, prefab, video, or paid/free Asset Store pac
 
 | Asset | Generation method | Notes |
 |---|---|---|
-| Player | `GameObject.CreatePrimitive(PrimitiveType.Sphere)` | Rigidbody kinematic, sphere collider |
+| Player | Procedural mesh object | Rigidbody kinematic, explicit sphere collider |
 | Shard | Color-specific primitive shape | Trigger collider, color-coded and silhouette-coded |
 | Shard glow | Sphere child | Non-colliding translucent shell |
 | Gate | Cubes | Full-width transparent trigger, arch frame, shape marker, cue strips |
@@ -20,11 +20,16 @@ No external art, audio, font, model, prefab, video, or paid/free Asset Store pac
 
 ## Materials
 
-Use code-created materials with shader fallback:
+Use code-created material instances cloned from project-owned base materials through `RuntimeMaterialProvider`:
 
-1. `Universal Render Pipeline/Lit`
-2. `Standard`
-3. Any available fallback shader
+1. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_UnlitOpaque.mat`
+2. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_UnlitTransparent.mat`
+3. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_ParticleUnlit.mat`
+
+These material assets reference only limited URP shader variants:
+
+- `Universal Render Pipeline/Unlit` for procedural world geometry.
+- `Universal Render Pipeline/Particles/Unlit` for ParticleSystem feedback.
 
 Palette:
 
@@ -38,11 +43,26 @@ Palette:
 
 `VisualTheme` is the source of truth for background, fog, track, obstacle, finish, HUD, and VFX colors. High contrast mode returns an alternate code-defined theme without creating ScriptableObject assets. Stage configs cycle through five code-defined theme variations by `themeIndex`.
 
+Required URP shaders are included through Resources material asset references, not by adding full URP shaders to Graphics Settings Always Included Shaders. `Universal Render Pipeline/Lit` must not be added to Always Included Shaders because it can generate too many Android shader variants. Runtime gameplay code should not scatter direct shader lookup calls outside `RuntimeMaterialProvider`; provider fallback lookup exists only for diagnostics when the Resources material assets are missing.
+
+If a later polish pass needs manual shader variant control, use a ShaderVariantCollection containing only the exact variants used by the game. Do not include the entire URP/Lit shader.
+
 Transparent gate material:
 
 - Alpha around 0.35.
 - Enable blending when shader supports it.
 - Still keep a solid arch/frame so gates are visible.
+
+## Runtime Components
+
+- `AddComponent(string)` is forbidden.
+- `GameObject.CreatePrimitive` is forbidden for generated runtime gameplay/visual objects.
+- Procedural objects are created with `GameObject`, `MeshFilter`, `MeshRenderer`, explicit material assignment, and generic collider helpers.
+- Use `ProceduralFactory.EnsureBoxCollider`, `EnsureSphereCollider`, and `EnsureCapsuleCollider` for collider creation.
+- Visual-only geometry must use `VisualPrimitive`, which disables colliders after creation.
+- Gameplay triggers must keep explicit trigger colliders.
+- Generated objects must have active renderers, non-null meshes, supported materials, and non-zero scale.
+- Run `Tools/Color Gate Rush/Validate Runtime Visuals` before Android/PC build smoke tests.
 
 ## Particles
 

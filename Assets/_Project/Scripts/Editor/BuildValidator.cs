@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -27,6 +28,7 @@ namespace ColorGateRush.EditorTools
             EnsureTypeExists<RuntimeUi>();
             EnsureTypeExists<ProceduralAudio>();
             EnsureInputConfiguration();
+            EnsurePortraitOrientation();
             EnsureStageProgressionRules();
             EnsureFinishUsesHudScoreForStars();
             EnsurePauseAndMenuFlowReferences();
@@ -34,6 +36,8 @@ namespace ColorGateRush.EditorTools
             EnsureStageStartHintReferences();
             EnsureVisualReadabilityReferences();
             EnsureVisualPolishReferences();
+            EnsureRuntimeComponentCreationSafety();
+            EnsureRuntimeMaterialProviderSafety();
             EnsureNoAutomaticRestartReferences();
             EnsureNoForbiddenProcessOrPrefsUsage();
             EnsureRuntimeFolderHasNoUnityEditorReferences();
@@ -59,7 +63,19 @@ namespace ColorGateRush.EditorTools
         {
             EnsureVisualReadabilityReferences();
             EnsureVisualPolishReferences();
+            EnsureRuntimeComponentCreationSafety();
+            EnsureRuntimeMaterialProviderSafety();
             Debug.Log("Color Gate Rush visual polish validation passed.");
+        }
+
+        [MenuItem("Tools/Color Gate Rush/Validate Runtime Visuals")]
+        // Validates runtime component, material, shader, and generated renderer safety without running a player build.
+        public static void ValidateRuntimeVisuals()
+        {
+            EnsureRuntimeComponentCreationSafety();
+            EnsureRuntimeMaterialProviderSafety();
+            EnsureRuntimeGenerationSmoke();
+            Debug.Log("Color Gate Rush runtime visual validation passed.");
         }
 
         [MenuItem("Tools/Color Gate Rush/Generate Balance Report")]
@@ -90,6 +106,8 @@ namespace ColorGateRush.EditorTools
             AppendValidation(report, "No forbidden process launch or full PlayerPrefs reset usage", EnsureNoForbiddenProcessOrPrefsUsage, ref hardFails);
             AppendValidation(report, "Stage start hint is transient", EnsureStageStartHintReferences, ref hardFails);
             AppendValidation(report, "VisualTheme and HUD readability hooks exist", EnsureVisualPolishReferences, ref hardFails);
+            AppendValidation(report, "Runtime component/material visual safety", EnsureRuntimeVisualsForReport, ref hardFails);
+            AppendRuntimeMaterialReferenceReport(report);
             AppendAndroidReadiness(report, ref warnings);
             AppendWebGlReadiness(report, ref warnings);
             report.AppendLine("Manual Checks: Android/WebGL builds, device thermal/performance pass, browser audio unlock, signing, icon, and store metadata are not automated.");
@@ -335,6 +353,38 @@ namespace ColorGateRush.EditorTools
             AppendInfo(report, "WebGL input backend", "activeInputHandler=" + ReadProjectSettingValue(settingsSource, "activeInputHandler"));
         }
 
+        // Appends material/shader inclusion details used by Android/WebGL/PC build readiness checks.
+        private static void AppendRuntimeMaterialReferenceReport(StringBuilder report)
+        {
+            string materialFolder = "Assets/_Project/Resources/ColorGateRush/Materials";
+            string graphicsPath = "ProjectSettings/GraphicsSettings.asset";
+            string providerPath = "Assets/_Project/Scripts/Runtime/RuntimeMaterialProvider.cs";
+            string[] materialPaths = Directory.Exists(materialFolder)
+                ? Directory.GetFiles(materialFolder, "*.mat", SearchOption.TopDirectoryOnly)
+                : Array.Empty<string>();
+
+            AppendInfo(report, "Runtime material Resources folder", materialFolder + " (" + materialPaths.Length + " .mat assets)");
+            foreach (string materialPath in materialPaths)
+            {
+                AppendInfo(report, "Runtime material asset", materialPath.Replace('\\', '/'));
+            }
+
+            if (File.Exists(graphicsPath))
+            {
+                string graphicsSource = File.ReadAllText(graphicsPath);
+                AppendInfo(report, "Always Included URP/Lit", graphicsSource.Contains("933532a4fcc9baf4fa0491de14d08ed7") ? "present - hard fail" : "absent");
+                AppendInfo(report, "Always Included URP/Unlit", graphicsSource.Contains("650dd9526735d5b46b79224bc6e94025") ? "present" : "absent");
+                AppendInfo(report, "Always Included URP/Particles Unlit", graphicsSource.Contains("0406db5a14f94604a8c57ccfbc9f3b46") ? "present" : "absent");
+            }
+
+            if (File.Exists(providerPath))
+            {
+                List<string> shaderFindLocations = new List<string>();
+                CollectSourceLocations(providerPath, "Shader." + "Find", shaderFindLocations);
+                AppendInfo(report, "Runtime Shader.Find locations", shaderFindLocations.Count == 0 ? "none" : string.Join(", ", shaderFindLocations.ToArray()));
+            }
+        }
+
         // Reads a single YAML-style ProjectSettings value.
         private static string ReadProjectSettingValue(string source, string key)
         {
@@ -453,6 +503,26 @@ namespace ColorGateRush.EditorTools
                 {
                     throw new InvalidOperationException("Project uses the new Input System but com.unity.inputsystem is missing from Packages/manifest.json.");
                 }
+            }
+        }
+
+        // Fails validation when Android is allowed to rotate into untested landscape layouts.
+        private static void EnsurePortraitOrientation()
+        {
+            string projectSettingsPath = "ProjectSettings/ProjectSettings.asset";
+            if (!File.Exists(projectSettingsPath))
+            {
+                throw new InvalidOperationException("ProjectSettings.asset is missing; orientation cannot be validated.");
+            }
+
+            string projectSettings = File.ReadAllText(projectSettingsPath);
+            string orientation = ReadProjectSettingValue(projectSettings, "defaultScreenOrientation");
+            string portrait = ReadProjectSettingValue(projectSettings, "allowedAutorotateToPortrait");
+            string landscapeRight = ReadProjectSettingValue(projectSettings, "allowedAutorotateToLandscapeRight");
+            string landscapeLeft = ReadProjectSettingValue(projectSettings, "allowedAutorotateToLandscapeLeft");
+            if (orientation != "1" || portrait != "1" || landscapeRight == "1" || landscapeLeft == "1")
+            {
+                throw new InvalidOperationException("Color Gate Rush is a portrait runner. Set defaultScreenOrientation=Portrait and disable landscape autorotation.");
             }
         }
 
@@ -945,7 +1015,8 @@ namespace ColorGateRush.EditorTools
             string runtimeUiPath = "Assets/_Project/Scripts/Runtime/RuntimeUi.cs";
             string bootstrapPath = "Assets/_Project/Scripts/Editor/BootstrapColorGateRush.cs";
             string animatorPath = "Assets/_Project/Scripts/Runtime/ShardVisualAnimator.cs";
-            string[] requiredFiles = { themePath, factoryPath, generatorPath, runtimeUiPath, bootstrapPath, animatorPath };
+            string materialProviderPath = "Assets/_Project/Scripts/Runtime/RuntimeMaterialProvider.cs";
+            string[] requiredFiles = { themePath, factoryPath, generatorPath, runtimeUiPath, bootstrapPath, animatorPath, materialProviderPath };
             foreach (string path in requiredFiles)
             {
                 if (!File.Exists(path))
@@ -960,7 +1031,8 @@ namespace ColorGateRush.EditorTools
             string runtimeUiSource = File.ReadAllText(runtimeUiPath);
             string bootstrapSource = File.ReadAllText(bootstrapPath);
             string animatorSource = File.ReadAllText(animatorPath);
-            string combinedSource = themeSource + factorySource + generatorSource + runtimeUiSource + bootstrapSource + animatorSource;
+            string materialProviderSource = File.ReadAllText(materialProviderPath);
+            string combinedSource = themeSource + factorySource + generatorSource + runtimeUiSource + bootstrapSource + animatorSource + materialProviderSource;
             string[] requiredTokens =
             {
                 "VisualThemeProfile",
@@ -984,6 +1056,9 @@ namespace ColorGateRush.EditorTools
                 "ScreenPanelColor",
                 "ButtonColor",
                 "ScaledParticleCount",
+                "RuntimeMaterialProvider",
+                "CreateParticle",
+                "ParticleMaterial",
                 "CollectBurst",
                 "GateBurst",
                 "FinishBurst",
@@ -1003,6 +1078,277 @@ namespace ColorGateRush.EditorTools
             {
                 throw new InvalidOperationException("Decorative geometry must use visual-only primitive helpers.");
             }
+        }
+
+        // Verifies project scripts never use string/reflection based Unity component creation.
+        private static void EnsureRuntimeComponentCreationSafety()
+        {
+            string scriptsPath = "Assets/_Project/Scripts";
+            if (!Directory.Exists(scriptsPath))
+            {
+                throw new InvalidOperationException("Missing project scripts folder: " + scriptsPath);
+            }
+
+            string[] scripts = Directory.GetFiles(scriptsPath, "*.cs", SearchOption.AllDirectories);
+            foreach (string script in scripts)
+            {
+                string source = File.ReadAllText(script);
+                string normalizedPath = script.Replace('\\', '/');
+                if (TryFindUnsafeComponentCreation(source, normalizedPath, out string finding))
+                {
+                    throw new InvalidOperationException(finding);
+                }
+            }
+        }
+
+        // Finds unsafe string/reflection component creation without flagging validator diagnostic text.
+        private static bool TryFindUnsafeComponentCreation(string source, string normalizedPath, out string finding)
+        {
+            finding = string.Empty;
+            string[] lines = source.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            Regex addComponentCall = new Regex(@"\bAddComponent\s*\(\s*([^)]+)\)", RegexOptions.Compiled);
+            Regex reflectionComponentLookup = new Regex(
+                @"\b(?:Type|[A-Za-z_][A-Za-z0-9_]*)\.GetType\s*\(\s*@?""[^""]*(?:BoxCollider|SphereCollider|CapsuleCollider|MeshCollider|MeshRenderer|MeshFilter|Rigidbody|AudioSource|ParticleSystem|Canvas|EventSystem|Camera|Light)[^""]*""",
+                RegexOptions.Compiled);
+
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string codeLine = RemoveLineComment(lines[i]);
+                foreach (Match match in addComponentCall.Matches(codeLine))
+                {
+                    string argument = match.Groups[1].Value.Trim();
+                    if (argument.StartsWith("typeof(", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    string pattern = argument.StartsWith("\"", StringComparison.Ordinal) || argument.StartsWith("@\"", StringComparison.Ordinal)
+                        ? "AddComponent string literal"
+                        : "AddComponent non-type argument";
+                    finding = BuildUnsafeComponentCreationMessage(normalizedPath, i + 1, pattern, lines[i]);
+                    return true;
+                }
+
+                Match reflectionMatch = reflectionComponentLookup.Match(codeLine);
+                if (reflectionMatch.Success)
+                {
+                    finding = BuildUnsafeComponentCreationMessage(normalizedPath, i + 1, "Reflection component type lookup", lines[i]);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // Removes simple line comments so documentation examples do not trip code-pattern checks.
+        private static string RemoveLineComment(string line)
+        {
+            int commentIndex = line.IndexOf("//", StringComparison.Ordinal);
+            return commentIndex >= 0 ? line.Substring(0, commentIndex) : line;
+        }
+
+        // Builds an actionable validator message for unsafe component creation findings.
+        private static string BuildUnsafeComponentCreationMessage(string path, int line, string pattern, string snippet)
+        {
+            return "Unsafe string/reflection component usage found:\n"
+                + path + ":" + line + "\n"
+                + snippet.Trim() + "\n"
+                + "Pattern: " + pattern + "\n"
+                + "Use AddComponent<T>() or AddComponent(typeof(T)) instead.";
+        }
+
+        // Verifies runtime procedural materials use Resources material references instead of variant-heavy Always Included shaders.
+        private static void EnsureRuntimeMaterialProviderSafety()
+        {
+            string providerPath = "Assets/_Project/Scripts/Runtime/RuntimeMaterialProvider.cs";
+            string factoryPath = "Assets/_Project/Scripts/Runtime/ProceduralFactory.cs";
+            string graphicsPath = "ProjectSettings/GraphicsSettings.asset";
+            if (!File.Exists(providerPath) || !File.Exists(factoryPath) || !File.Exists(graphicsPath))
+            {
+                throw new InvalidOperationException("Missing runtime material validation input files.");
+            }
+
+            string providerSource = File.ReadAllText(providerPath);
+            string factorySource = File.ReadAllText(factoryPath);
+            string runtimePath = "Assets/_Project/Scripts/Runtime";
+            string shaderFindToken = "Shader." + "Find";
+            List<string> runtimeShaderFindLocations = new List<string>();
+            foreach (string script in Directory.GetFiles(runtimePath, "*.cs", SearchOption.AllDirectories))
+            {
+                if (script.Replace('\\', '/') == providerPath)
+                {
+                    continue;
+                }
+
+                if (File.ReadAllText(script).Contains(shaderFindToken))
+                {
+                    throw new InvalidOperationException("Runtime Shader.Find must be centralized in RuntimeMaterialProvider: " + script.Replace('\\', '/'));
+                }
+            }
+
+            CollectSourceLocations(providerPath, shaderFindToken, runtimeShaderFindLocations);
+
+            string[] providerRequiredTokens =
+            {
+                "Universal Render Pipeline/Unlit",
+                "Universal Render Pipeline/Particles/Unlit",
+                "Resources.Load<Material>",
+                "Resources.GetBuiltinResource<Material>",
+                "CGR_UnlitOpaque",
+                "CGR_UnlitTransparent",
+                "CGR_ParticleUnlit",
+                "IsMaterialUsable"
+            };
+
+            foreach (string token in providerRequiredTokens)
+            {
+                if (!providerSource.Contains(token))
+                {
+                    throw new InvalidOperationException("RuntimeMaterialProvider missing required shader/material safety token: " + token);
+                }
+            }
+
+            if (providerSource.Contains("Universal Render Pipeline/Lit"))
+            {
+                throw new InvalidOperationException("RuntimeMaterialProvider must not use Universal Render Pipeline/Lit for procedural runtime materials.");
+            }
+
+            if (providerSource.Contains("return null;"))
+            {
+                throw new InvalidOperationException("RuntimeMaterialProvider must not return null materials; fail fast or use a supported fallback.");
+            }
+
+            string[] forbiddenFactoryTokens =
+            {
+                "GameObject.CreatePrimitive",
+                "Hidden/InternalErrorShader",
+                "Shader.Find",
+                "\"Standard\"",
+                "\"Diffuse\""
+            };
+
+            foreach (string token in forbiddenFactoryTokens)
+            {
+                if (factorySource.Contains(token))
+                {
+                    throw new InvalidOperationException("ProceduralFactory contains unsafe runtime visual token: " + token);
+                }
+            }
+
+            string[] factoryRequiredTokens =
+            {
+                "EnsureMeshFilter",
+                "EnsureMeshRenderer",
+                "EnsureBoxCollider",
+                "EnsureSphereCollider",
+                "EnsureCapsuleCollider",
+                "GetPrimitiveMesh",
+                "ValidateGeneratedVisual",
+                "ParticleMaterial",
+                "ApplyParticleMaterial"
+            };
+
+            foreach (string token in factoryRequiredTokens)
+            {
+                if (!factorySource.Contains(token))
+                {
+                    throw new InvalidOperationException("ProceduralFactory missing runtime build visual safety hook: " + token);
+                }
+            }
+
+            string graphicsSource = File.ReadAllText(graphicsPath);
+            EnsureAlwaysIncludedShaderPolicy(graphicsSource);
+            EnsureRuntimeMaterialAssets();
+            Debug.Log("Color Gate Rush runtime Shader.Find usage is limited to RuntimeMaterialProvider fallback paths: "
+                + string.Join(", ", runtimeShaderFindLocations.ToArray()));
+        }
+
+        // Fails if variant-heavy URP shaders are placed in Always Included Shaders.
+        private static void EnsureAlwaysIncludedShaderPolicy(string graphicsSource)
+        {
+            string litShaderGuid = "933532a4fcc9baf4fa0491de14d08ed7";
+            if (graphicsSource.Contains(litShaderGuid))
+            {
+                throw new InvalidOperationException("URP/Lit must not be in Always Included Shaders because it causes excessive shader variants on Android.");
+            }
+
+            string[] warningShaderGuids =
+            {
+                "8d2bb70cbf9db8d4da26e15b26e74248",
+                "650dd9526735d5b46b79224bc6e94025",
+                "0406db5a14f94604a8c57ccfbc9f3b46"
+            };
+
+            foreach (string guid in warningShaderGuids)
+            {
+                if (!graphicsSource.Contains(guid))
+                {
+                    continue;
+                }
+
+                Debug.LogWarning("URP shader guid remains in Always Included Shaders. Prefer Resources material references unless a tiny, intentional variant set is required: " + guid);
+            }
+        }
+
+        // Verifies Resources base material assets exist and reference limited URP shaders.
+        private static void EnsureRuntimeMaterialAssets()
+        {
+            string materialFolder = "Assets/_Project/Resources/ColorGateRush/Materials";
+            if (!Directory.Exists(materialFolder))
+            {
+                throw new InvalidOperationException("Runtime Resources material folder is missing: " + materialFolder);
+            }
+
+            string unlitGuid = "650dd9526735d5b46b79224bc6e94025";
+            string particleUnlitGuid = "0406db5a14f94604a8c57ccfbc9f3b46";
+            string litGuid = "933532a4fcc9baf4fa0491de14d08ed7";
+            Dictionary<string, string> requiredMaterials = new Dictionary<string, string>
+            {
+                { "CGR_UnlitOpaque.mat", unlitGuid },
+                { "CGR_UnlitTransparent.mat", unlitGuid },
+                { "CGR_ParticleUnlit.mat", particleUnlitGuid }
+            };
+
+            foreach (KeyValuePair<string, string> required in requiredMaterials)
+            {
+                string path = Path.Combine(materialFolder, required.Key);
+                if (!File.Exists(path))
+                {
+                    throw new InvalidOperationException("Missing runtime Resources material asset: " + path.Replace('\\', '/'));
+                }
+
+                string source = File.ReadAllText(path);
+                if (source.Contains(litGuid))
+                {
+                    throw new InvalidOperationException("Runtime material must not reference URP/Lit: " + path.Replace('\\', '/'));
+                }
+
+                if (!source.Contains(required.Value))
+                {
+                    throw new InvalidOperationException("Runtime material references the wrong shader guid: " + path.Replace('\\', '/'));
+                }
+            }
+        }
+
+        // Records source locations for report/debug logs without broadening allowed Shader.Find usage.
+        private static void CollectSourceLocations(string path, string token, List<string> results)
+        {
+            string[] lines = File.ReadAllLines(path);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (lines[i].Contains(token))
+                {
+                    results.Add(path + ":" + (i + 1));
+                }
+            }
+        }
+
+        // Runs runtime visual safety checks for the release readiness report.
+        private static void EnsureRuntimeVisualsForReport()
+        {
+            EnsureRuntimeComponentCreationSafety();
+            EnsureRuntimeMaterialProviderSafety();
+            EnsureRuntimeGenerationSmoke();
         }
 
         // Fails validation when delayed restart or result-screen global touch retry code remains.
@@ -1111,7 +1457,7 @@ namespace ColorGateRush.EditorTools
             {
                 foreach (StageConfig stage in stageManager.Stages)
                 {
-                    LaneRunnerController runner = generator.ClearAndGenerate(null, stage, configureScene: false);
+                    LaneRunnerController runner = generator.ClearAndGenerate(null, stage, configureScene: true);
                     if (runner == null)
                     {
                         throw new InvalidOperationException("Runtime generation smoke failed: runner was not created for stage " + stage.StageIndex + ".");
@@ -1132,6 +1478,8 @@ namespace ColorGateRush.EditorTools
                     EnsureTriggerColliders<ColorGate>(generatedRoot);
                     EnsureTriggerColliders<ObstacleBlock>(generatedRoot);
                     EnsureTriggerColliders<FinishLine>(generatedRoot);
+                    EnsureGeneratedVisualHealth(generatedRoot, stage);
+                    EnsureCameraCanRenderGeneratedObjects(runner, stage);
                     if (generator.LastReport == null || !generator.LastReport.IsValid)
                     {
                         throw new InvalidOperationException("Runtime generation smoke failed fairness validation for stage " + stage.StageIndex + ".");
@@ -1368,6 +1716,65 @@ namespace ColorGateRush.EditorTools
                 {
                     throw new InvalidOperationException("Runtime generation smoke failed: " + typeof(T).Name + " is missing a trigger collider.");
                 }
+            }
+        }
+
+        // Verifies generated runtime objects have visible renderers, meshes, and supported materials.
+        private static void EnsureGeneratedVisualHealth(Transform generatedRoot, StageConfig stage)
+        {
+            MeshRenderer[] renderers = generatedRoot.GetComponentsInChildren<MeshRenderer>(true);
+            MeshFilter[] meshFilters = generatedRoot.GetComponentsInChildren<MeshFilter>(true);
+            if (renderers.Length < 20)
+            {
+                throw new InvalidOperationException("Runtime visual smoke failed: stage " + stage.StageIndex + " generated too few renderers: " + renderers.Length);
+            }
+
+            foreach (MeshRenderer renderer in renderers)
+            {
+                if (renderer == null || !renderer.enabled)
+                {
+                    throw new InvalidOperationException("Runtime visual smoke failed: disabled or missing renderer in stage " + stage.StageIndex + ".");
+                }
+
+                if (!RuntimeMaterialProvider.IsMaterialUsable(renderer.sharedMaterial))
+                {
+                    string name = renderer != null ? renderer.name : "unknown";
+                    throw new InvalidOperationException("Runtime visual smoke failed: unsupported/null material on " + name + " in stage " + stage.StageIndex + ".");
+                }
+            }
+
+            foreach (MeshFilter meshFilter in meshFilters)
+            {
+                if (meshFilter == null || meshFilter.sharedMesh == null)
+                {
+                    string name = meshFilter != null ? meshFilter.name : "unknown";
+                    throw new InvalidOperationException("Runtime visual smoke failed: missing mesh on " + name + " in stage " + stage.StageIndex + ".");
+                }
+            }
+        }
+
+        // Verifies the generated camera setup can render the default-layer procedural level.
+        private static void EnsureCameraCanRenderGeneratedObjects(LaneRunnerController runner, StageConfig stage)
+        {
+            Camera camera = Camera.main;
+            if (camera == null)
+            {
+                throw new InvalidOperationException("Runtime visual smoke failed: Main Camera missing after stage " + stage.StageIndex + " generation.");
+            }
+
+            if ((camera.cullingMask & (1 << 0)) == 0)
+            {
+                throw new InvalidOperationException("Runtime visual smoke failed: Main Camera culling mask excludes Default layer.");
+            }
+
+            if (camera.farClipPlane < stage.TrackLength)
+            {
+                throw new InvalidOperationException("Runtime visual smoke failed: Main Camera far clip is shorter than stage track length.");
+            }
+
+            if (runner == null || runner.transform == null)
+            {
+                throw new InvalidOperationException("Runtime visual smoke failed: runner target missing for camera validation.");
             }
         }
 

@@ -38,6 +38,8 @@ The parent agent should:
 - ensure runtime scripts do not use `UnityEditor`;
 - ensure generated scene references are created by bootstrap or runtime discovery;
 - ensure `Assets/_Project` contains no imported texture, audio, model, font, or prefab assets;
+- ensure runtime procedural objects do not use `GameObject.CreatePrimitive` or `AddComponent(string)`;
+- ensure runtime materials go through `RuntimeMaterialProvider` and Resources base material assets, not full URP shader Always Included entries;
 - run compile/build validation when Unity is available.
 
 ## Phase 4 — QA review
@@ -108,6 +110,14 @@ The final Codex response should include:
 - Confirm the top-left HUD uses a translucent contrast panel and shadowed text for stage, score, star targets, and current color/shape.
 - Confirm background, track, collectibles, and obstacles remain visually distinct on mobile portrait screens.
 - Confirm `VisualTheme` is the source of truth for world, HUD, and VFX colors.
+- Confirm `RuntimeMaterialProvider` is the source of truth for generated material/shader creation.
+- Confirm `Universal Render Pipeline/Lit` is not in Graphics Settings Always Included Shaders.
+- Confirm `Assets/_Project/Resources/ColorGateRush/Materials` contains the runtime base material assets.
+- Confirm `Validate Runtime Visuals` passes before Android/PC build smoke tests.
+- Confirm generated objects report nonzero renderer, mesh, material, collider, and camera visibility counts in Development Build logs.
+- Confirm Android logs no longer contain `Can't add component because 'BoxCollider' doesn't exist!`.
+- Confirm Android has no pink procedural materials.
+- Confirm PC build renders player, track, shards, obstacles, gates, finish, VFX, and HUD after starting a stage.
 - Confirm `Tools/Color Gate Rush/Apply Visual Theme` applies camera background, fog, ambient, and directional light settings without external assets.
 - Confirm default Unity skybox appearance is suppressed through code-defined background/fog settings.
 - Confirm generated `BackgroundRoot` and `TrackVisualRoot` objects appear under the generated level.

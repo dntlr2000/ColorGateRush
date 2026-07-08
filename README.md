@@ -51,9 +51,14 @@ Stage Select lists 30 deterministic stages in a scrollable two-column grid.
 
 All gameplay assets are generated from Unity primitives, built-in UI/TextMesh, ParticleSystem, procedural materials, and `AudioClip.Create`.
 
+Runtime mesh objects are created with explicit `GameObject` + `MeshFilter` + `MeshRenderer` + generic collider helpers. `GameObject.CreatePrimitive` and `AddComponent(string)` are not used, because Android player builds can fail built-in primitive collider creation with messages such as `Can't add component because 'BoxCollider' doesn't exist!`.
+
 ## Visual Polish
 
 - `VisualTheme` centralizes the candy-neon palette for background, track, hazards, finish, HUD, and VFX.
+- `RuntimeMaterialProvider` centralizes URP-compatible shader/material creation for generated objects.
+- Runtime base materials live under `Assets/_Project/Resources/ColorGateRush/Materials`, so Android/WebGL/PC builds include the limited shader variants actually used by generated objects.
+- `Universal Render Pipeline/Lit` is not placed in Graphics Settings Always Included Shaders because its variant count can break Android builds.
 - 30 stages cycle through five procedural theme variations without external textures or skyboxes.
 - The default Unity skybox feel is replaced by camera color, fog, ambient light, directional light, and procedural backdrop panels.
 - Track readability uses primitive rails, lane separators, edge glow, side light strips, and rhythm stripes.
@@ -94,11 +99,14 @@ Unity menu:
 - `Tools/Color Gate Rush/Validate Project`
 - `Tools/Color Gate Rush/Validate Build`
 - `Tools/Color Gate Rush/Validate Visual Polish`
+- `Tools/Color Gate Rush/Validate Runtime Visuals`
 - `Tools/Color Gate Rush/Generate Balance Report`
 - `Tools/Color Gate Rush/Generate Release Readiness Report`
 - `Tools/Color Gate Rush/Apply Visual Theme`
 - `Tools/Color Gate Rush/Reset Local Progress`
 
-Manual QA should verify MainMenu to StageSelect, Stage unlocks, pause/resume, no automatic restart, row fairness, star targets, Music/SFX settings, Stage 1 tutorial, and the visual polish checklist for HUD contrast, track readability, shard/obstacle/gate/finish clarity, BGM/sting transitions, and mobile-safe VFX.
+Manual QA should verify MainMenu to StageSelect, Stage unlocks, pause/resume, no automatic restart, row fairness, star targets, Music/SFX settings, Stage 1 tutorial, and the visual polish checklist for HUD contrast, track readability, shard/obstacle/gate/finish clarity, BGM/sting transitions, mobile-safe VFX, Android pink-material absence, and PC renderer visibility.
+
+If Android shows pink materials, run `Validate Runtime Visuals`, confirm `Universal Render Pipeline/Lit` is absent from Always Included Shaders, and confirm the Resources material assets exist under `Assets/_Project/Resources/ColorGateRush/Materials`. If a PC build hides generated objects, use a Development Build and check the runtime visual self-check log for renderer, mesh, material, collider, camera culling mask, and far clip counts.
 
 For Android/WebGL packaging preparation, follow `docs/release_readiness_checklist.md`. It covers Validate Build, Balance Report, Release Readiness Report, APK/AAB usage, keystore safety, WebGL browser checks, and device smoke tests.
