@@ -39,11 +39,12 @@ namespace ColorGateRush
         public const float TrackLength = 196f;
         public const float SegmentLength = 12f;
         public const float BaseForwardSpeed = 8.5f;
-        public const float MaxForwardSpeed = 13.5f;
+        public const float MaxForwardSpeed = 14.5f;
         public const float LaneMoveSharpness = 12f;
         public const int ComboCap = 10;
         public const int SameColorShardScore = 10;
         public const int WrongColorShardPenalty = 15;
+        public const int MaxWrongShardCount = 3;
         public const int GateScore = 5;
         public const int ObstaclePenalty = 50;
 

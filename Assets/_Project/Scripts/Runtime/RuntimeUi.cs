@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -10,12 +11,17 @@ namespace ColorGateRush
 {
     public sealed class RuntimeUi : MonoBehaviour
     {
+        private const string MainMenuBackgroundResourcePath = "ColorGateRush/Images/MainMenuBackground";
+
         private Canvas _canvas;
         private GameObject _menuPanel;
         private GameObject _stageSelectPanel;
         private GameObject _rulesPanel;
         private GameObject _settingsPanel;
         private GameObject _resetConfirmPanel;
+        private GameObject _endlessResetConfirmPanel;
+        private GameObject _playtestStatsPanel;
+        private GameObject _statsResetConfirmPanel;
         private GameObject _hudPanel;
         private GameObject _tutorialPanel;
         private GameObject _pausePanel;
@@ -23,14 +29,18 @@ namespace ColorGateRush
         private Transform _stageButtonRoot;
         private Text _scoreText;
         private Text _messageText;
+        private Text _menuNoticeText;
         private Text _debugText;
         private Text _hintText;
         private Text _musicButtonText;
         private Text _musicVolumeButtonText;
         private Text _sfxButtonText;
         private Text _sfxVolumeButtonText;
+        private Slider _musicVolumeSlider;
+        private Slider _sfxVolumeSlider;
         private Text _cameraShakeButtonText;
         private Text _colorAssistButtonText;
+        private Text _statsBodyText;
         private Text _pauseStageText;
         private Text _pauseScoreText;
         private Text _resultTitleText;
@@ -51,11 +61,16 @@ namespace ColorGateRush
         private Action _onToggleSound;
         private Action _onToggleMusic;
         private Action _onToggleSfx;
-        private Action _onCycleMusicVolume;
-        private Action _onCycleSfxVolume;
+        private Action<float> _onSetMusicVolume;
+        private Action<float> _onSetSfxVolume;
         private Action _onToggleCameraShake;
         private Action _onToggleColorAssist;
         private Action _onResetProgress;
+        private Action _onPlaytestStats;
+        private Action _onResetPlaytestStats;
+        private Action _onStartEndless;
+        private Action _onQuit;
+        private Action _onResetEndlessRecords;
         private Action _onTutorialOk;
         private Action<int> _onStageSelected;
         private int _hudStageIndex = 1;
@@ -92,11 +107,16 @@ namespace ColorGateRush
             Action onToggleSound,
             Action onToggleMusic,
             Action onToggleSfx,
-            Action onCycleMusicVolume,
-            Action onCycleSfxVolume,
+            Action<float> onSetMusicVolume,
+            Action<float> onSetSfxVolume,
             Action onToggleCameraShake,
             Action onToggleColorAssist,
             Action onResetProgress,
+            Action onPlaytestStats,
+            Action onResetPlaytestStats,
+            Action onStartEndless,
+            Action onQuit,
+            Action onResetEndlessRecords,
             Action onTutorialOk)
         {
             _onStart = onStart;
@@ -112,11 +132,16 @@ namespace ColorGateRush
             _onToggleSound = onToggleSound;
             _onToggleMusic = onToggleMusic;
             _onToggleSfx = onToggleSfx;
-            _onCycleMusicVolume = onCycleMusicVolume;
-            _onCycleSfxVolume = onCycleSfxVolume;
+            _onSetMusicVolume = onSetMusicVolume;
+            _onSetSfxVolume = onSetSfxVolume;
             _onToggleCameraShake = onToggleCameraShake;
             _onToggleColorAssist = onToggleColorAssist;
             _onResetProgress = onResetProgress;
+            _onPlaytestStats = onPlaytestStats;
+            _onResetPlaytestStats = onResetPlaytestStats;
+            _onStartEndless = onStartEndless;
+            _onQuit = onQuit;
+            _onResetEndlessRecords = onResetEndlessRecords;
             _onTutorialOk = onTutorialOk;
         }
 
@@ -125,6 +150,10 @@ namespace ColorGateRush
         {
             EnsureCanvas();
             SetPanel(_menuPanel);
+            if (_menuNoticeText != null)
+            {
+                _menuNoticeText.text = string.Empty;
+            }
         }
 
         // Shows stage selection with lock state and saved best stars.
@@ -148,18 +177,56 @@ namespace ColorGateRush
             EnsureCanvas();
             SetPanel(_settingsPanel);
             _resetConfirmPanel.SetActive(false);
+            _endlessResetConfirmPanel.SetActive(false);
             RefreshSettingsLabels();
         }
 
+        // Shows local playtest counters in a scrollable panel without changing gameplay state.
+        public void ShowPlaytestStats(int stageCount)
+        {
+            EnsureCanvas();
+            RebuildPlaytestStats(stageCount);
+            SetPanel(_playtestStatsPanel);
+            _statsResetConfirmPanel.SetActive(false);
+        }
+
+        // Shows a short main-menu notice for platform-specific actions such as Editor/WebGL quit handling.
+        public void ShowMenuNotice(string message)
+        {
+            EnsureCanvas();
+            if (_menuNoticeText != null)
+            {
+                _menuNoticeText.text = message;
+            }
+        }
+
         // Shows the gameplay HUD and refreshes its values.
-        public void ShowPlayingHud(StageConfig stage, int score, int combo, ColorId color, int seed)
+        public void ShowPlayingHud(StageConfig stage, int score, int combo, ColorId color, int seed, int wrongShardCount, int wrongShardLimit)
         {
             EnsureCanvas();
             SetPanel(_hudPanel);
             _hudStageIndex = stage.StageIndex;
             _hudTwoStarScore = stage.TwoStarScore;
             _hudThreeStarScore = stage.ThreeStarScore;
-            SetHud(score, combo, color, seed);
+            SetHud(score, combo, color, seed, wrongShardCount, wrongShardLimit);
+        }
+
+        // Shows the Endless HUD with score, distance, best record, and current color target.
+        public void ShowEndlessHud(
+            int score,
+            int combo,
+            ColorId color,
+            float distance,
+            int bestScore,
+            float bestDistance,
+            int seed,
+            int wrongShardCount,
+            int wrongShardLimit,
+            float speedMultiplier)
+        {
+            EnsureCanvas();
+            SetPanel(_hudPanel);
+            SetEndlessHud(score, combo, color, distance, bestScore, bestDistance, seed, wrongShardCount, wrongShardLimit, speedMultiplier);
         }
 
         // Shows a short stage-start briefing that disappears automatically and never changes game state.
@@ -168,9 +235,19 @@ namespace ColorGateRush
             EnsureCanvas();
             ShowMessage(
                 "Stage " + stage.StageIndex
-                + "\n같은 색/모양 샤드를 모으세요"
+                + "\n같은 색/모양 샤드만 모으세요"
+                + "\n다른 색 3회 = 실패"
                 + "\n★2: " + stage.TwoStarScore + "  ★3: " + stage.ThreeStarScore
                 + "\n클리어하면 다음 스테이지가 열립니다",
+                2.4f);
+        }
+
+        // Shows a short Endless briefing that disappears automatically and never changes game state.
+        public void ShowEndlessStartHint()
+        {
+            EnsureCanvas();
+            ShowMessage(
+                "Endless Mode\n점점 빨라집니다\n다른 색 샤드 3회면 기록 종료",
                 2.4f);
         }
 
@@ -189,6 +266,16 @@ namespace ColorGateRush
             ClearMessage();
             _pauseStageText.text = "Stage " + stage.StageIndex;
             _pauseScoreText.text = "현재 점수 " + score;
+        }
+
+        // Shows the pause menu for Endless Mode without mentioning stage stars or unlocks.
+        public void ShowEndlessPauseMenu(int score, float distance)
+        {
+            EnsureCanvas();
+            SetPanel(_pausePanel);
+            ClearMessage();
+            _pauseStageText.text = "Endless Mode";
+            _pauseScoreText.text = "Score " + score + "   Distance " + Mathf.FloorToInt(distance) + "m";
         }
 
         // Shows the failure or clear result panel with final score and navigation buttons.
@@ -214,22 +301,108 @@ namespace ColorGateRush
             }
             else
             {
-                _resultInfoText.text = "피니시에 도달하면 별 1개를 얻습니다.";
+                _resultInfoText.text = StageFailReasonText(result.FailReason)
+                    + "\n피니시에 도달하면 별 1개를 얻습니다.";
             }
 
             _nextStageButton.gameObject.SetActive(completed && result.HasNextStage);
             _nextStageButton.interactable = completed && nextStageAvailable;
         }
 
-        // Updates score, combo, color, seed, and compact in-game rule hints.
-        public void SetHud(int score, int combo, ColorId color, int seed)
+        // Shows an Endless-only failure result with best score and distance records.
+        public void ShowEndlessResult(EndlessRunResult result)
+        {
+            EnsureCanvas();
+            SetPanel(_resultPanel);
+            _resultTitleText.text = "기록 종료!";
+            _resultScoreText.text = "Endless Mode\nScore " + result.Score
+                + "\nDistance " + Mathf.FloorToInt(result.Distance) + "m"
+                + "\n기회: " + FormatMistakeIcons(result.WrongShardCount, result.WrongShardLimit);
+            string recordText = result.NewBestScore || result.NewBestDistance ? "New Record!" : "Best Record";
+            _resultInfoText.text = recordText
+                + "\n실패 원인: " + EndlessFailReasonText(result.FailReason)
+                + "\nBest Score " + result.BestScore
+                + "   Best Distance " + Mathf.FloorToInt(result.BestDistance) + "m"
+                + "\n생성 Row " + result.RowsGenerated;
+            _restartButtonText.text = "다시 도전";
+            _nextStageButton.gameObject.SetActive(false);
+            _nextStageButton.interactable = false;
+        }
+
+        // Returns player-facing text for the Endless failure reason shown on the result panel.
+        private static string EndlessFailReasonText(EndlessFailReason failReason)
+        {
+            return failReason == EndlessFailReason.WrongShardLimit
+                ? "다른 색 샤드를 3번 먹었습니다"
+                : "장애물 충돌";
+        }
+
+        // Returns player-facing text for finite Stage Mode failure causes.
+        private static string StageFailReasonText(StageFailReason failReason)
+        {
+            return failReason == StageFailReason.WrongShardLimit
+                ? "다른 색 샤드를 3번 먹었습니다."
+                : "장애물에 부딪혔습니다.";
+        }
+
+        // Updates score, combo, color, seed, mistake chances, and compact in-game rule hints.
+        public void SetHud(int score, int combo, ColorId color, int seed, int wrongShardCount, int wrongShardLimit)
         {
             EnsureCanvas();
             ColorVisualProfile profile = GameConstants.GetVisualProfile(color);
             int threeStarRemaining = Mathf.Max(0, _hudThreeStarScore - score);
-            _scoreText.text = $"Stage {_hudStageIndex}\nScore: {score}\n★1: 피니시\n★2: {_hudTwoStarScore}   ★3: {_hudThreeStarScore}\n3성까지: {threeStarRemaining}\n현재: {profile.HudLabel}\nCombo x{Mathf.Max(1, combo)}";
+            _scoreText.text = $"Stage {_hudStageIndex}\nScore: {score}\n★1: 피니시\n★2: {_hudTwoStarScore}   ★3: {_hudThreeStarScore}\n3성까지: {threeStarRemaining}\n기회: {FormatMistakeIcons(wrongShardCount, wrongShardLimit)}\n현재: {profile.HudLabel}\nCombo x{Mathf.Max(1, combo)}";
             _debugText.text = "Seed " + seed;
             _hintText.text = string.Empty;
+        }
+
+        // Updates the Endless HUD without star targets or stage unlock messaging.
+        public void SetEndlessHud(
+            int score,
+            int combo,
+            ColorId color,
+            float distance,
+            int bestScore,
+            float bestDistance,
+            int seed,
+            int wrongShardCount,
+            int wrongShardLimit,
+            float speedMultiplier)
+        {
+            EnsureCanvas();
+            ColorVisualProfile profile = GameConstants.GetVisualProfile(color);
+            int safeWrongLimit = Mathf.Max(1, wrongShardLimit);
+            int safeWrongCount = Mathf.Clamp(wrongShardCount, 0, safeWrongLimit);
+            _scoreText.text = "Endless Mode"
+                + "\nScore: " + score
+                + "\nDistance: " + Mathf.FloorToInt(distance) + "m"
+                + "\nBest: " + bestScore + " / " + Mathf.FloorToInt(bestDistance) + "m"
+                + "\n기회: " + FormatMistakeIcons(safeWrongCount, safeWrongLimit)
+                + "\nSpeed x" + Mathf.Max(1f, speedMultiplier).ToString("0.0")
+                + "\n현재: " + profile.HudLabel
+                + "\nCombo x" + Mathf.Max(1, combo);
+            _debugText.text = "Seed " + seed;
+            _hintText.text = string.Empty;
+        }
+
+        // Formats remaining wrong-shard chances as filled and empty HUD glyphs.
+        private static string FormatMistakeIcons(int wrongShardCount, int wrongShardLimit)
+        {
+            int safeLimit = Mathf.Max(1, wrongShardLimit);
+            int used = Mathf.Clamp(wrongShardCount, 0, safeLimit);
+            int remaining = safeLimit - used;
+            StringBuilder builder = new StringBuilder(safeLimit * 2);
+            for (int i = 0; i < safeLimit; i++)
+            {
+                if (i > 0)
+                {
+                    builder.Append(' ');
+                }
+
+                builder.Append(i < remaining ? '◆' : '◇');
+            }
+
+            return builder.ToString();
         }
 
         // Updates the central gameplay message text.
@@ -287,6 +460,7 @@ namespace ColorGateRush
             _stageSelectPanel = CreateStageSelectPanel(canvasGo.transform);
             _rulesPanel = CreateRulesPanel(canvasGo.transform);
             _settingsPanel = CreateSettingsPanel(canvasGo.transform);
+            _playtestStatsPanel = CreatePlaytestStatsPanel(canvasGo.transform);
             _tutorialPanel = CreateTutorialPanel(canvasGo.transform);
             _hudPanel = CreateHudPanel(canvasGo.transform);
             _pausePanel = CreatePausePanel(canvasGo.transform);
@@ -319,6 +493,7 @@ namespace ColorGateRush
             _stageSelectPanel.SetActive(_stageSelectPanel == activePanel);
             _rulesPanel.SetActive(_rulesPanel == activePanel);
             _settingsPanel.SetActive(_settingsPanel == activePanel);
+            _playtestStatsPanel.SetActive(_playtestStatsPanel == activePanel);
             _tutorialPanel.SetActive(_tutorialPanel == activePanel);
             _hudPanel.SetActive(_hudPanel == activePanel);
             _pausePanel.SetActive(_pausePanel == activePanel);
@@ -332,13 +507,74 @@ namespace ColorGateRush
         // Builds the title menu with start and rules buttons.
         private GameObject CreateMenuPanel(Transform parent)
         {
-            GameObject panel = CreatePanel(parent, "MainMenuPanel", ScreenPanelColor(0.92f));
-            CreateText(panel.transform, "TitleText", new Vector2(0f, 360f), TextAnchor.MiddleCenter, 86, new Vector2(900f, 140f), "Color Gate Rush");
-            CreateText(panel.transform, "SubtitleText", new Vector2(0f, 240f), TextAnchor.MiddleCenter, 34, new Vector2(820f, 100f), "색을 바꾸며 달리고, 같은 색 샤드를 모으세요");
-            CreateButton(panel.transform, "StartButton", new Vector2(0f, 90f), "시작", () => _onStart?.Invoke());
-            CreateButton(panel.transform, "RulesButton", new Vector2(0f, -45f), "플레이 방법", () => _onRules?.Invoke());
-            CreateButton(panel.transform, "SettingsButton", new Vector2(0f, -180f), "설정", () => _onSettings?.Invoke());
+            GameObject panel = CreatePanel(parent, "MainMenuPanel", Color.black);
+            CreateMenuBackground(panel.transform);
+            Text titleText = CreateText(panel.transform, "TitleText", new Vector2(0f, 390f), TextAnchor.MiddleCenter, 86, new Vector2(900f, 140f), "Color Gate Rush");
+            AddTextShadow(titleText);
+            Text subtitleText = CreateText(panel.transform, "SubtitleText", new Vector2(0f, 285f), TextAnchor.MiddleCenter, 34, new Vector2(820f, 100f), "색을 바꾸며 달리고, 같은 색 샤드를 모으세요");
+            AddTextShadow(subtitleText);
+            CreateButton(panel.transform, "StartButton", new Vector2(0f, 145f), "시작", () => _onStart?.Invoke());
+            CreateButton(panel.transform, "EndlessModeButton", new Vector2(0f, 25f), "Endless Mode", () => _onStartEndless?.Invoke());
+            CreateButton(panel.transform, "RulesButton", new Vector2(0f, -95f), "플레이 방법", () => _onRules?.Invoke());
+            CreateButton(panel.transform, "SettingsButton", new Vector2(0f, -215f), "설정", () => _onSettings?.Invoke());
+            CreateButton(panel.transform, "PlaytestStatsButton", new Vector2(0f, -335f), "플레이테스트 통계", () => _onPlaytestStats?.Invoke());
+            CreateButton(panel.transform, "QuitButton", new Vector2(0f, -475f), "게임 종료", () => _onQuit?.Invoke());
+            _menuNoticeText = CreateText(panel.transform, "MenuNoticeText", new Vector2(0f, -585f), TextAnchor.MiddleCenter, 28, new Vector2(860f, 80f), string.Empty);
+            AddTextShadow(_menuNoticeText);
             return panel;
+        }
+
+        // Adds the user-provided main-menu image and a readability overlay behind menu controls.
+        private static void CreateMenuBackground(Transform parent)
+        {
+            GameObject backgroundGo = new GameObject("MainMenuBackgroundImage");
+            backgroundGo.transform.SetParent(parent, false);
+            RectTransform backgroundRect = backgroundGo.AddComponent<RectTransform>();
+            backgroundRect.anchorMin = Vector2.zero;
+            backgroundRect.anchorMax = Vector2.one;
+            backgroundRect.offsetMin = Vector2.zero;
+            backgroundRect.offsetMax = Vector2.zero;
+            Image backgroundImage = backgroundGo.AddComponent<Image>();
+            backgroundImage.raycastTarget = false;
+            Sprite backgroundSprite = LoadMainMenuBackgroundSprite();
+            backgroundImage.sprite = backgroundSprite;
+            backgroundImage.color = backgroundSprite != null ? Color.white : new Color(0.02f, 0.03f, 0.10f, 1f);
+            backgroundImage.type = Image.Type.Simple;
+            backgroundImage.preserveAspect = false;
+
+            GameObject overlayGo = new GameObject("MainMenuBackgroundReadabilityOverlay");
+            overlayGo.transform.SetParent(parent, false);
+            RectTransform overlayRect = overlayGo.AddComponent<RectTransform>();
+            overlayRect.anchorMin = Vector2.zero;
+            overlayRect.anchorMax = Vector2.one;
+            overlayRect.offsetMin = Vector2.zero;
+            overlayRect.offsetMax = Vector2.zero;
+            Image overlayImage = overlayGo.AddComponent<Image>();
+            overlayImage.color = new Color(0f, 0f, 0f, 0.34f);
+            overlayImage.raycastTarget = false;
+        }
+
+        // Loads the Resources-backed menu background with a Texture2D fallback for import setting changes.
+        private static Sprite LoadMainMenuBackgroundSprite()
+        {
+            Sprite sprite = Resources.Load<Sprite>(MainMenuBackgroundResourcePath);
+            if (sprite != null)
+            {
+                return sprite;
+            }
+
+            Texture2D texture = Resources.Load<Texture2D>(MainMenuBackgroundResourcePath);
+            if (texture == null)
+            {
+                Debug.LogWarning("Main menu background image missing from Resources: " + MainMenuBackgroundResourcePath);
+                return null;
+            }
+
+            return Sprite.Create(
+                texture,
+                new Rect(0f, 0f, texture.width, texture.height),
+                new Vector2(0.5f, 0.5f),
+                100f);
         }
 
         // Builds the stage select panel root and a container for dynamic stage buttons.
@@ -438,15 +674,18 @@ namespace ColorGateRush
             CreateText(panel.transform, "RulesTitleText", new Vector2(0f, 430f), TextAnchor.MiddleCenter, 64, new Vector2(900f, 100f), "플레이 방법");
             string rules = "색상과 모양이 같은 샤드를 먹으면 점수를 얻습니다. +" + GameConstants.SameColorShardScore + " x 콤보\n"
                 + "연속 수집 콤보가 오르면 점수와 효과음이 조금 커집니다.\n"
-                + "다른 색 샤드는 피하세요. 먹으면 -" + GameConstants.WrongColorShardPenalty + ", 콤보 초기화\n"
+                + "다른 색 샤드를 3번 먹으면 실패합니다.\n"
+                + "남은 기회는 HUD의 아이콘으로 확인합니다.\n"
+                + "Endless Mode도 같은 규칙으로 다른 색 샤드 3회째에 기록 종료됩니다.\n"
                 + "게이트를 통과하면 플레이어 색과 목표 모양이 바뀝니다. +" + GameConstants.GateScore + "\n"
                 + "현재 목표 색상/모양은 HUD와 플레이어 주변 accent에서 확인합니다.\n"
-                + "장애물에 부딪히면 실패합니다. -" + GameConstants.ObstaclePenalty + "\n"
+                + "장애물에 부딪히면 즉시 실패합니다. -" + GameConstants.ObstaclePenalty + "\n"
                 + "피니시에 도달하면 클리어하고 별 1개를 얻습니다.\n"
                 + "★2/★3 목표 점수는 플레이 중 HUD에서 확인합니다.\n"
                 + "★2는 ★3 목표 점수의 2/3 이상입니다.\n"
                 + "클리어하면 다음 스테이지가 열립니다.\n"
-                + "★3은 거의 완벽한 수집 보상입니다. 1~2번 실수해도 어려울 수 있습니다.\n"
+                + "★3은 거의 완벽한 수집 보상입니다. 놓친 샤드가 있으면 어려울 수 있습니다.\n"
+                + "Endless Mode는 점점 빨라지는 기록 도전이며 별점/해금과 독립입니다.\n"
                 + "Pause: 버튼 또는 ESC/P, Retry: R, 메뉴: M\n\n"
                 + "조작: A/D 또는 ←/→\n"
                 + "모바일: 좌우 스와이프 또는 화면 좌우 탭";
@@ -460,16 +699,23 @@ namespace ColorGateRush
         {
             GameObject panel = CreatePanel(parent, "SettingsPanel", ScreenPanelColor(0.94f));
             CreateText(panel.transform, "SettingsTitleText", new Vector2(0f, 430f), TextAnchor.MiddleCenter, 64, new Vector2(900f, 100f), "설정");
-            _musicButtonText = CreateButton(panel.transform, "MusicToggleButton", new Vector2(0f, 280f), "Music", () => _onToggleMusic?.Invoke()).GetComponentInChildren<Text>();
-            _musicVolumeButtonText = CreateButton(panel.transform, "MusicVolumeButton", new Vector2(0f, 170f), "Music Vol", () => _onCycleMusicVolume?.Invoke()).GetComponentInChildren<Text>();
-            _sfxButtonText = CreateButton(panel.transform, "SfxToggleButton", new Vector2(0f, 60f), "SFX", () => _onToggleSfx?.Invoke()).GetComponentInChildren<Text>();
-            _sfxVolumeButtonText = CreateButton(panel.transform, "SfxVolumeButton", new Vector2(0f, -50f), "SFX Vol", () => _onCycleSfxVolume?.Invoke()).GetComponentInChildren<Text>();
-            _cameraShakeButtonText = CreateButton(panel.transform, "CameraShakeToggleButton", new Vector2(0f, -160f), "Camera", () => _onToggleCameraShake?.Invoke()).GetComponentInChildren<Text>();
-            _colorAssistButtonText = CreateButton(panel.transform, "ColorAssistToggleButton", new Vector2(0f, -270f), "Assist", () => _onToggleColorAssist?.Invoke()).GetComponentInChildren<Text>();
-            CreateButton(panel.transform, "ResetProgressButton", new Vector2(-255f, -405f), "진행 초기화", ShowResetConfirm);
-            CreateButton(panel.transform, "SettingsBackButton", new Vector2(255f, -405f), "메인 메뉴", () => _onMainMenu?.Invoke());
+            _musicButtonText = CreateButton(panel.transform, "MusicToggleButton", new Vector2(0f, 305f), "Music", () => _onToggleMusic?.Invoke()).GetComponentInChildren<Text>();
+            _musicVolumeButtonText = CreateText(panel.transform, "MusicVolumeLabel", new Vector2(0f, 220f), TextAnchor.MiddleCenter, 34, new Vector2(760f, 52f), "Music Vol");
+            AddTextShadow(_musicVolumeButtonText);
+            _musicVolumeSlider = CreateSlider(panel.transform, "MusicVolumeSlider", new Vector2(0f, 165f), GameSettings.MusicVolume, HandleMusicVolumeChanged);
+            _sfxButtonText = CreateButton(panel.transform, "SfxToggleButton", new Vector2(0f, 70f), "SFX", () => _onToggleSfx?.Invoke()).GetComponentInChildren<Text>();
+            _sfxVolumeButtonText = CreateText(panel.transform, "SfxVolumeLabel", new Vector2(0f, -15f), TextAnchor.MiddleCenter, 34, new Vector2(760f, 52f), "SFX Vol");
+            AddTextShadow(_sfxVolumeButtonText);
+            _sfxVolumeSlider = CreateSlider(panel.transform, "SfxVolumeSlider", new Vector2(0f, -70f), GameSettings.SfxVolume, HandleSfxVolumeChanged);
+            _cameraShakeButtonText = CreateButton(panel.transform, "CameraShakeToggleButton", new Vector2(0f, -180f), "Camera", () => _onToggleCameraShake?.Invoke()).GetComponentInChildren<Text>();
+            _colorAssistButtonText = CreateButton(panel.transform, "ColorAssistToggleButton", new Vector2(0f, -290f), "Assist", () => _onToggleColorAssist?.Invoke()).GetComponentInChildren<Text>();
+            CreateButton(panel.transform, "ResetProgressButton", new Vector2(-255f, -395f), "진행 초기화", ShowResetConfirm);
+            CreateButton(panel.transform, "ResetEndlessRecordsButton", new Vector2(255f, -395f), "Endless 기록", ShowEndlessResetConfirm);
+            CreateButton(panel.transform, "SettingsBackButton", new Vector2(0f, -515f), "메인 메뉴", () => _onMainMenu?.Invoke());
             _resetConfirmPanel = CreateResetConfirmPanel(panel.transform);
             _resetConfirmPanel.SetActive(false);
+            _endlessResetConfirmPanel = CreateEndlessResetConfirmPanel(panel.transform);
+            _endlessResetConfirmPanel.SetActive(false);
             return panel;
         }
 
@@ -486,7 +732,115 @@ namespace ColorGateRush
         // Shows the reset confirmation overlay on top of Settings.
         private void ShowResetConfirm()
         {
+            _endlessResetConfirmPanel.SetActive(false);
             _resetConfirmPanel.SetActive(true);
+        }
+
+        // Builds the confirmation overlay for Endless record reset only.
+        private GameObject CreateEndlessResetConfirmPanel(Transform parent)
+        {
+            GameObject panel = CreatePanel(parent, "EndlessResetConfirmPanel", ScreenPanelColor(0.86f));
+            CreateText(panel.transform, "EndlessResetConfirmText", new Vector2(0f, 70f), TextAnchor.MiddleCenter, 38, new Vector2(860f, 160f), "Endless 최고 기록만 초기화할까요?");
+            CreateButton(panel.transform, "EndlessResetConfirmYesButton", new Vector2(-250f, -90f), "기록 초기화", () => _onResetEndlessRecords?.Invoke());
+            CreateButton(panel.transform, "EndlessResetConfirmNoButton", new Vector2(250f, -90f), "취소", () => _endlessResetConfirmPanel.SetActive(false));
+            return panel;
+        }
+
+        // Shows the Endless reset confirmation overlay on top of Settings.
+        private void ShowEndlessResetConfirm()
+        {
+            _resetConfirmPanel.SetActive(false);
+            _endlessResetConfirmPanel.SetActive(true);
+        }
+
+        // Builds a scrollable local-only playtest stats panel for stage-by-stage review.
+        private GameObject CreatePlaytestStatsPanel(Transform parent)
+        {
+            GameObject panel = CreatePanel(parent, "PlaytestStatsPanel", ScreenPanelColor(0.94f));
+            CreateText(panel.transform, "PlaytestStatsTitleText", new Vector2(0f, 430f), TextAnchor.MiddleCenter, 60, new Vector2(900f, 100f), "플레이테스트 통계");
+
+            GameObject scrollView = new GameObject("PlaytestStatsScrollView");
+            scrollView.transform.SetParent(panel.transform, false);
+            RectTransform scrollRect = scrollView.AddComponent<RectTransform>();
+            scrollRect.anchorMin = new Vector2(0.5f, 0.5f);
+            scrollRect.anchorMax = new Vector2(0.5f, 0.5f);
+            scrollRect.pivot = new Vector2(0.5f, 0.5f);
+            scrollRect.sizeDelta = new Vector2(930f, 700f);
+            scrollRect.anchoredPosition = new Vector2(0f, 0f);
+            Image scrollImage = scrollView.AddComponent<Image>();
+            scrollImage.color = HudPanelColor(0.36f);
+
+            GameObject viewport = new GameObject("PlaytestStatsViewport");
+            viewport.transform.SetParent(scrollView.transform, false);
+            RectTransform viewportRect = viewport.AddComponent<RectTransform>();
+            viewportRect.anchorMin = Vector2.zero;
+            viewportRect.anchorMax = Vector2.one;
+            viewportRect.offsetMin = new Vector2(18f, 18f);
+            viewportRect.offsetMax = new Vector2(-18f, -18f);
+            Image viewportImage = viewport.AddComponent<Image>();
+            viewportImage.color = new Color(1f, 1f, 1f, 0.02f);
+            Mask mask = viewport.AddComponent<Mask>();
+            mask.showMaskGraphic = false;
+
+            GameObject content = new GameObject("PlaytestStatsContent");
+            content.transform.SetParent(viewport.transform, false);
+            RectTransform contentRect = content.AddComponent<RectTransform>();
+            contentRect.anchorMin = new Vector2(0f, 1f);
+            contentRect.anchorMax = new Vector2(1f, 1f);
+            contentRect.pivot = new Vector2(0.5f, 1f);
+            contentRect.sizeDelta = new Vector2(0f, 1320f);
+            contentRect.anchoredPosition = Vector2.zero;
+
+            _statsBodyText = CreateText(content.transform, "PlaytestStatsBodyText", Vector2.zero, TextAnchor.UpperLeft, 28, new Vector2(850f, 1320f), string.Empty);
+            AddTextShadow(_statsBodyText);
+
+            ScrollRect scroll = scrollView.AddComponent<ScrollRect>();
+            scroll.viewport = viewportRect;
+            scroll.content = contentRect;
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = ScrollRect.MovementType.Elastic;
+            scroll.scrollSensitivity = 28f;
+
+            CreateButton(panel.transform, "ResetPlaytestStatsButton", new Vector2(-255f, -430f), "통계 초기화", ShowStatsResetConfirm);
+            CreateButton(panel.transform, "PlaytestStatsBackButton", new Vector2(255f, -430f), "메인 메뉴", () => _onMainMenu?.Invoke());
+            _statsResetConfirmPanel = CreateStatsResetConfirmPanel(panel.transform);
+            _statsResetConfirmPanel.SetActive(false);
+            return panel;
+        }
+
+        // Rebuilds the playtest stats text from CGR_Stats_ PlayerPrefs keys.
+        private void RebuildPlaytestStats(int stageCount)
+        {
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine("로컬 저장 통계입니다. 네트워크 전송은 하지 않습니다.");
+            builder.AppendLine("중단은 Pause에서 재시작/메뉴/스테이지 선택으로 나간 횟수입니다.");
+            builder.AppendLine("실패 색한도/장은 다른 색 3회 실패/장애물 실패 횟수입니다.");
+            builder.AppendLine("Endless 최고 점수: " + EndlessRecords.BestScore + " / 최고 거리: " + Mathf.FloorToInt(EndlessRecords.BestDistance) + "m / 시도: " + EndlessRecords.Attempts + " / 색한도 실패: " + EndlessRecords.WrongShardLimitFails);
+            builder.AppendLine();
+            int clampedStageCount = Mathf.Clamp(stageCount, 1, StageManager.TotalStageCount);
+            for (int stage = 1; stage <= clampedStageCount; stage++)
+            {
+                builder.AppendLine(PlaytestStats.BuildSummaryLine(stage));
+            }
+
+            _statsBodyText.text = builder.ToString();
+        }
+
+        // Builds a separate confirmation overlay for playtest stat reset only.
+        private GameObject CreateStatsResetConfirmPanel(Transform parent)
+        {
+            GameObject panel = CreatePanel(parent, "StatsResetConfirmPanel", ScreenPanelColor(0.86f));
+            CreateText(panel.transform, "StatsResetConfirmText", new Vector2(0f, 70f), TextAnchor.MiddleCenter, 38, new Vector2(860f, 160f), "플레이테스트 통계만 초기화할까요?");
+            CreateButton(panel.transform, "StatsResetConfirmYesButton", new Vector2(-250f, -90f), "통계 초기화", () => _onResetPlaytestStats?.Invoke());
+            CreateButton(panel.transform, "StatsResetConfirmNoButton", new Vector2(250f, -90f), "취소", () => _statsResetConfirmPanel.SetActive(false));
+            return panel;
+        }
+
+        // Shows the playtest stat reset confirmation overlay on top of the stats panel.
+        private void ShowStatsResetConfirm()
+        {
+            _statsResetConfirmPanel.SetActive(true);
         }
 
         // Updates Settings button labels from the current PlayerPrefs values.
@@ -498,6 +852,31 @@ namespace ColorGateRush
             _sfxVolumeButtonText.text = "SFX Vol " + VolumePercent(GameSettings.SfxVolume);
             _cameraShakeButtonText.text = "Camera Shake " + (GameSettings.CameraShakeEnabled ? "On" : "Off");
             _colorAssistButtonText.text = "Color Assist " + (GameSettings.ColorAssistEnabled ? "On" : "Off");
+            if (_musicVolumeSlider != null)
+            {
+                _musicVolumeSlider.SetValueWithoutNotify(GameSettings.MusicVolume);
+            }
+
+            if (_sfxVolumeSlider != null)
+            {
+                _sfxVolumeSlider.SetValueWithoutNotify(GameSettings.SfxVolume);
+            }
+        }
+
+        // Applies a dragged Music volume value to labels and game settings immediately.
+        private void HandleMusicVolumeChanged(float value)
+        {
+            float clamped = Mathf.Clamp01(value);
+            _musicVolumeButtonText.text = "Music Vol " + VolumePercent(clamped);
+            _onSetMusicVolume?.Invoke(clamped);
+        }
+
+        // Applies a dragged SFX volume value to labels and game settings immediately.
+        private void HandleSfxVolumeChanged(float value)
+        {
+            float clamped = Mathf.Clamp01(value);
+            _sfxVolumeButtonText.text = "SFX Vol " + VolumePercent(clamped);
+            _onSetSfxVolume?.Invoke(clamped);
         }
 
         // Builds the first-run Stage 1 tutorial confirmation panel.
@@ -508,6 +887,7 @@ namespace ColorGateRush
             string body = "좌우로 이동해 색상과 모양이 같은 샤드를 모으세요.\n"
                 + "게이트를 통과하면 색과 목표 모양이 바뀝니다.\n"
                 + "현재 목표는 좌상단 HUD에서 확인할 수 있습니다.\n"
+                + "다른 색 샤드는 3번 먹으면 실패합니다.\n"
                 + "장애물은 피하세요.\n"
                 + "클리어하면 다음 스테이지가 열립니다.\n"
                 + "별 3개는 완벽에 가까운 도전 목표입니다.\n"
@@ -527,9 +907,9 @@ namespace ColorGateRush
                 new Vector2(0f, 1f),
                 new Vector2(0f, 1f),
                 new Vector2(24f, -24f),
-                new Vector2(540f, 318f),
+                new Vector2(560f, 362f),
                 HudPanelColor(0.78f));
-            _scoreText = CreateText(infoPanel.transform, "ScoreText", new Vector2(24f, -18f), TextAnchor.UpperLeft, 34, new Vector2(492f, 282f), string.Empty);
+            _scoreText = CreateText(infoPanel.transform, "ScoreText", new Vector2(24f, -18f), TextAnchor.UpperLeft, 32, new Vector2(512f, 326f), string.Empty);
             AddTextShadow(_scoreText);
             _messageText = CreateText(panel.transform, "MessageText", Vector2.zero, TextAnchor.MiddleCenter, 54, new Vector2(900f, 260f), string.Empty);
             AddTextShadow(_messageText);
@@ -653,6 +1033,75 @@ namespace ColorGateRush
             Text text = CreateText(go.transform, name + "Text", Vector2.zero, TextAnchor.MiddleCenter, 40, rect.sizeDelta, label);
             text.color = ButtonTextColor();
             return button;
+        }
+
+        // Creates a horizontal uGUI slider for precise settings values without external sprites.
+        private static Slider CreateSlider(Transform parent, string name, Vector2 anchoredPosition, float value, Action<float> onValueChanged)
+        {
+            GameObject go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            RectTransform rect = go.AddComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(620f, 52f);
+            rect.anchoredPosition = anchoredPosition;
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+
+            Slider slider = go.AddComponent<Slider>();
+            slider.minValue = 0f;
+            slider.maxValue = 1f;
+            slider.wholeNumbers = false;
+
+            RectTransform backgroundRect = CreateSliderImage(go.transform, "Background", new Vector2(0f, 0f), new Vector2(620f, 16f), HudPanelColor(0.74f)).rectTransform;
+            backgroundRect.anchorMin = new Vector2(0f, 0.5f);
+            backgroundRect.anchorMax = new Vector2(1f, 0.5f);
+            backgroundRect.offsetMin = new Vector2(0f, -8f);
+            backgroundRect.offsetMax = new Vector2(0f, 8f);
+
+            GameObject fillArea = new GameObject("Fill Area");
+            fillArea.transform.SetParent(go.transform, false);
+            RectTransform fillAreaRect = fillArea.AddComponent<RectTransform>();
+            fillAreaRect.anchorMin = new Vector2(0f, 0f);
+            fillAreaRect.anchorMax = new Vector2(1f, 1f);
+            fillAreaRect.offsetMin = new Vector2(0f, 0f);
+            fillAreaRect.offsetMax = new Vector2(0f, 0f);
+            Image fill = CreateSliderImage(fillArea.transform, "Fill", Vector2.zero, new Vector2(0f, 22f), ButtonColor());
+            fill.rectTransform.anchorMin = new Vector2(0f, 0.5f);
+            fill.rectTransform.anchorMax = new Vector2(1f, 0.5f);
+            fill.rectTransform.offsetMin = new Vector2(0f, -11f);
+            fill.rectTransform.offsetMax = new Vector2(0f, 11f);
+
+            GameObject handleArea = new GameObject("Handle Slide Area");
+            handleArea.transform.SetParent(go.transform, false);
+            RectTransform handleAreaRect = handleArea.AddComponent<RectTransform>();
+            handleAreaRect.anchorMin = new Vector2(0f, 0f);
+            handleAreaRect.anchorMax = new Vector2(1f, 1f);
+            handleAreaRect.offsetMin = new Vector2(0f, 0f);
+            handleAreaRect.offsetMax = new Vector2(0f, 0f);
+            Image handle = CreateSliderImage(handleArea.transform, "Handle", Vector2.zero, new Vector2(46f, 46f), VisualTheme.Current().HudTextColor);
+
+            slider.fillRect = fill.rectTransform;
+            slider.handleRect = handle.rectTransform;
+            slider.targetGraphic = handle;
+            slider.SetValueWithoutNotify(Mathf.Clamp01(value));
+            slider.onValueChanged.AddListener(v => onValueChanged?.Invoke(v));
+            return slider;
+        }
+
+        // Creates one image element used by generated sliders.
+        private static Image CreateSliderImage(Transform parent, string name, Vector2 anchoredPosition, Vector2 size, Color color)
+        {
+            GameObject go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            RectTransform rect = go.AddComponent<RectTransform>();
+            rect.sizeDelta = size;
+            rect.anchoredPosition = anchoredPosition;
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            Image image = go.AddComponent<Image>();
+            image.color = color;
+            return image;
         }
 
         // Creates a text button anchored to a specific screen-relative point for HUD controls.

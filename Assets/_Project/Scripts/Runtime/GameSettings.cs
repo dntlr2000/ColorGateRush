@@ -16,13 +16,13 @@ namespace ColorGateRush
         // Returns the legacy sound toggle value used to seed split Music/SFX settings.
         public static bool SoundEnabled => PlayerPrefs.GetInt(SoundEnabledKey, 1) == 1;
 
-        // Returns whether procedural loop music should play.
+        // Returns whether menu/gameplay background music should play.
         public static bool MusicEnabled => PlayerPrefs.GetInt(MusicEnabledKey, SoundEnabled ? 1 : 0) == 1;
 
         // Returns whether procedural one-shot sound effects should play.
         public static bool SfxEnabled => PlayerPrefs.GetInt(SfxEnabledKey, SoundEnabled ? 1 : 0) == 1;
 
-        // Returns the clamped music volume used by looped procedural BGM.
+        // Returns the clamped music volume used by imported BGM and fallback loops.
         public static float MusicVolume => Mathf.Clamp(PlayerPrefs.GetFloat(MusicVolumeKey, 0.62f), 0f, 1f);
 
         // Returns the clamped SFX volume used by short procedural one-shots.
@@ -49,22 +49,6 @@ namespace ColorGateRush
         {
             PlayerPrefs.SetFloat(key, Mathf.Clamp01(value));
             PlayerPrefs.Save();
-        }
-
-        // Cycles a volume through three mobile-friendly preset levels.
-        public static float NextVolumeStep(float value)
-        {
-            if (value < 0.55f)
-            {
-                return 0.70f;
-            }
-
-            if (value < 0.85f)
-            {
-                return 1.00f;
-            }
-
-            return 0.40f;
         }
 
         // Marks the first-run tutorial as acknowledged.

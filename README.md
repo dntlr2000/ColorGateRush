@@ -1,6 +1,6 @@
 # Color Gate Rush
 
-Procedural Unity 6 hyper-casual runner built without external art, audio, models, fonts, prefabs, sprites, or Asset Store packages.
+Procedural Unity 6 hyper-casual runner built without downloaded art, models, fonts, prefabs, sprites, or Asset Store packages. The project currently allowlists two user-provided BGM clips and one user-provided main menu background image under `Resources`.
 
 ## Flow
 
@@ -8,6 +8,8 @@ Procedural Unity 6 hyper-casual runner built without external art, audio, models
 - StageSelect
 - Rules
 - Settings
+- Playtest Stats
+- Endless Playing
 - Playing
 - Tutorial
 - Paused
@@ -15,6 +17,8 @@ Procedural Unity 6 hyper-casual runner built without external art, audio, models
 - Completed
 
 Main Menu `Start` opens Stage Select. Gameplay starts only after selecting an unlocked stage.
+Main Menu `Endless Mode` starts a finish-free record run that is independent from stage stars and unlocks.
+Main Menu `게임 종료` calls `Application.Quit()` in Android/PC builds, logs safely in the Editor, and shows a WebGL tab-close notice.
 Stage Select lists 30 deterministic stages in a scrollable two-column grid.
 
 ## Controls
@@ -23,11 +27,12 @@ Stage Select lists 30 deterministic stages in a scrollable two-column grid.
 - Mobile: horizontal swipe or left/right half-screen tap
 - Pause: HUD button, `ESC`, or `P`
 - Pause shortcuts: `R` retry, `M` main menu
+- Android Back/Escape pauses gameplay and returns submenus to Main Menu.
 
 ## Rules
 
 - Collect same color and shape shards to score.
-- Wrong-color shards reset combo and subtract score.
+- Wrong-color shards reset combo, subtract score, and count toward the shared 3-strike game over in Stage and Endless Mode.
 - Gates change the player color and target shape.
 - Obstacles fail the run.
 - Finish grants at least 1 star and preserves the current HUD score.
@@ -36,6 +41,8 @@ Stage Select lists 30 deterministic stages in a scrollable two-column grid.
 - 2 stars require the rounded-up two-thirds point of the 3-star target.
 - 3 stars are tuned as a near-perfect route reward; missing or miscollecting 1-2 key shards can make the cutoff hard to reach.
 - Any clear with at least 1 star unlocks the next stage.
+- Endless Mode has no finish, star targets, or unlock writes; it gets faster over time and failure shows score, distance, best score, best distance, wrong shard chance icons, and failure reason.
+- In both Stage and Endless Mode, collecting the third wrong-color shard ends the run. Stage Mode still clears/unlocks by reaching the finish.
 
 ## Stage Content
 
@@ -43,13 +50,14 @@ Stage Select lists 30 deterministic stages in a scrollable two-column grid.
 - Stages 2-30 unlock sequentially from clears with at least 1 star.
 - Stage configs are generated in C# with unique seeds, no external data files.
 - Difficulty increases through row count, track length, speed, gate frequency, obstacle pressure, and off-color shard pressure.
+- The speed/spacing pass raises forward speed while widening row spacing and gate spacing so reaction time remains fair.
 - Star targets are derived from route-aware estimated max score, including lane choice, combo scoring, penalties, and gate score.
 - The route-aware max treats each row as one lane choice, so multiple same-row shards are not counted as all collectible.
 - Balance Report shows naive max, route-aware max, and the gap between them for Stage 1-30.
 
 ## Procedural Assets
 
-All gameplay assets are generated from Unity primitives, built-in UI/TextMesh, ParticleSystem, procedural materials, and `AudioClip.Create`.
+Gameplay visual assets are generated from Unity primitives, built-in UI/TextMesh, ParticleSystem, and procedural materials. The main menu uses the approved user-provided background image at `Assets/_Project/Resources/ColorGateRush/Images/MainMenuBackground.png`; runtime gameplay visuals still use procedural geometry. Audio uses two approved user-provided BGM clips for menu/gameplay music, with procedural `AudioClip.Create` fallbacks, SFX, and result stings.
 
 Runtime mesh objects are created with explicit `GameObject` + `MeshFilter` + `MeshRenderer` + generic collider helpers. `GameObject.CreatePrimitive` and `AddComponent(string)` are not used, because Android player builds can fail built-in primitive collider creation with messages such as `Can't add component because 'BoxCollider' doesn't exist!`.
 
@@ -58,22 +66,22 @@ Runtime mesh objects are created with explicit `GameObject` + `MeshFilter` + `Me
 - `VisualTheme` centralizes the candy-neon palette for background, track, hazards, finish, HUD, and VFX.
 - `RuntimeMaterialProvider` centralizes URP-compatible shader/material creation for generated objects.
 - Runtime base materials live under `Assets/_Project/Resources/ColorGateRush/Materials`, so Android/WebGL/PC builds include the limited shader variants actually used by generated objects.
-- Opaque generated meshes use `Universal Render Pipeline/Simple Lit` through `CGR_SimpleLitOpaque.mat` to keep lighting and shadows without pulling in full URP/Lit variants.
+- Opaque generated meshes use `Universal Render Pipeline/Simple Lit` through small Resources material presets such as `CGR_SimpleLitShard`, `CGR_SimpleLitTrack`, `CGR_SimpleLitObstacle`, and `CGR_SimpleLitFinish` to keep lighting and shadows without pulling in full URP/Lit variants.
 - Transparent panels and ParticleSystem feedback stay on limited `URP/Unlit` materials for build safety.
 - `Universal Render Pipeline/Lit` is not placed in Graphics Settings Always Included Shaders because its variant count can break Android builds.
 - 30 stages cycle through five procedural theme variations without external textures or skyboxes.
-- The default Unity skybox feel is replaced by camera color, fog, ambient light, directional light, and procedural backdrop panels.
-- Track readability uses primitive rails, lane separators, edge glow, side light strips, and rhythm stripes.
+- The default Unity skybox feel is replaced by camera color, fog, ambient light, directional light, and subtle side/horizon accents rather than large backdrop wall panels.
+- Track readability uses primitive rails, lane separators, surface sheen strips, edge glow, side light strips, and rhythm stripes.
 - Shards use color-specific primitive silhouettes, glow shells, subtle bob/spin, and short collect bursts.
 - Obstacles use warning colors, stripes, and spike-like primitive accents.
 - Gates and finish use procedural cue strips, arches, checker tiles, and mobile-safe particle bursts.
 - URP Volume is optional; safe fallback visual settings are applied without external assets or package changes.
 
-## Procedural Audio
+## Audio
 
-- `ProceduralAudio` creates all clips at runtime with `AudioClip.Create`; no `.mp3`, `.wav`, or `.ogg` files are used.
-- Menu and gameplay use separate short looped BGM clips.
-- Gameplay BGM varies slightly by stage tier through tempo/root pitch.
+- Menu BGM is loaded from `Assets/_Project/Resources/ColorGateRush/Audio/ColorgateRush_Menu.mp3`.
+- Gameplay and Endless BGM are loaded from `Assets/_Project/Resources/ColorGateRush/Audio/ColorgateRush_Ingame.mp3`.
+- `ProceduralAudio` loads the approved BGM clips through `Resources.Load<AudioClip>` and falls back to runtime `AudioClip.Create` loops if the clips are missing.
 - Completed and Failed states stop the loop and play short procedural stings.
 - Pause/tutorial temporarily duck music volume and all state changes restore normal volume.
 - Repeated tone/buzz SFX clips are cached after creation to avoid allocating a new clip for every collect or hit.
@@ -93,6 +101,25 @@ Settings use `CGR_` PlayerPrefs keys:
 
 Reset Local Progress deletes only Color Gate Rush progress keys: unlocked stage, selected stage, best stars, and tutorial seen. Music/SFX and visual settings are preserved.
 
+## Playtest Stats
+
+The Main Menu has a local-only `플레이테스트 통계` screen for Android/PC test builds. It stores per-stage attempts, clears, fails, quits, best score, best stars, total score, last score, last stars, playtime, and 3-star clears under `CGR_Stats_Stage_{n}_...` keys. Nothing is sent over the network.
+
+`Reset Playtest Stats` deletes only `CGR_Stats_` keys. It is intentionally separate from Reset Local Progress so testers can clear telemetry without changing stage unlocks or settings.
+
+## Endless Records
+
+Endless records use `CGR_` PlayerPrefs keys and are independent from Stage Mode:
+
+- `CGR_EndlessBestScore`
+- `CGR_EndlessBestDistance`
+- `CGR_EndlessBestRows`
+- `CGR_EndlessAttempts`
+- `CGR_EndlessTotalRuns`
+- `CGR_EndlessWrongShardLimitFails`
+
+`Reset Endless Records` deletes only those Endless keys. Reset Local Progress does not clear Endless records.
+
 ## Validator
 
 Unity menu:
@@ -106,9 +133,17 @@ Unity menu:
 - `Tools/Color Gate Rush/Generate Release Readiness Report`
 - `Tools/Color Gate Rush/Apply Visual Theme`
 - `Tools/Color Gate Rush/Reset Local Progress`
+- `Tools/Color Gate Rush/Reset Playtest Stats`
+- `Tools/Color Gate Rush/Reset Endless Records`
 
-Manual QA should verify MainMenu to StageSelect, Stage unlocks, pause/resume, no automatic restart, row fairness, star targets, Music/SFX settings, Stage 1 tutorial, and the visual polish checklist for HUD contrast, track readability, shard/obstacle/gate/finish clarity, BGM/sting transitions, mobile-safe VFX, Android pink-material absence, and PC renderer visibility.
+Manual QA should verify MainMenu to StageSelect, Endless entry, Quit behavior, Stage unlocks, pause/resume, no automatic restart, row fairness, star targets, Playtest Stats recording/reset, Endless record reset, Music/SFX toggles and sliders, Stage 1 tutorial, and the visual polish checklist for HUD contrast, track readability, shard/obstacle/gate/finish clarity, mobile-safe VFX, Android pink-material absence, and PC renderer visibility.
 
-If Android shows pink materials, run `Validate Runtime Visuals`, confirm `Universal Render Pipeline/Lit` is absent from Always Included Shaders, and confirm the Resources material assets exist under `Assets/_Project/Resources/ColorGateRush/Materials`. If visual depth looks flat, confirm opaque meshes are using `CGR_SimpleLitOpaque` and renderer shadow casting/receiving is enabled. If a PC build hides generated objects, use a Development Build and check the runtime visual self-check log for renderer, mesh, material, collider, camera culling mask, and far clip counts.
+Stage and Endless QA should verify the HUD shows three wrong-shard chance icons, the first two wrong-color shards continue the run, and the third opens the Failed/result screen with the wrong-shard limit reason. Endless QA should also verify speed/difficulty rises without changing `Time.timeScale` and row spacing remains readable as speed increases.
+
+Only the two approved user-provided BGM files under `Assets/_Project/Resources/ColorGateRush/Audio` and the approved main menu background image under `Assets/_Project/Resources/ColorGateRush/Images` are allowed as imported media. SFX remain procedural.
+
+If Android shows pink materials, run `Validate Runtime Visuals`, confirm `Universal Render Pipeline/Lit` is absent from Always Included Shaders, and confirm the Resources material assets exist under `Assets/_Project/Resources/ColorGateRush/Materials`. If visual depth looks flat, confirm opaque meshes are using the `CGR_SimpleLit*` presets and renderer shadow casting/receiving is enabled. If a PC build hides generated objects, use a Development Build and check the runtime visual self-check log for renderer, mesh, material, collider, camera culling mask, and far clip counts.
 
 For Android/WebGL packaging preparation, follow `docs/release_readiness_checklist.md`. It covers Validate Build, Balance Report, Release Readiness Report, APK/AAB usage, keystore safety, WebGL browser checks, and device smoke tests.
+
+For playtest preparation, follow `docs/playtest_checklist.md`. Additional SFX replacement and broader audio licensing workflows remain deferred until after gameplay difficulty, UI, save/unlock, and device stability feedback is collected.

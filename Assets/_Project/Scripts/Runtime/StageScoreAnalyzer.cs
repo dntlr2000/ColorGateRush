@@ -62,47 +62,57 @@ namespace ColorGateRush
             return AnalyzeReport(stage, report);
         }
 
-        // Calculates the best achievable score by dynamic programming over lanes and combo state.
+        // Calculates the best achievable score by dynamic programming over lanes, combo, and wrong-shard count.
         public static StageScoreEstimate AnalyzeReport(StageConfig stage, LevelGenerationReport report)
         {
-            int[,] scores = CreateScoreGrid();
-            int[,] counts = new int[GameConstants.LaneCount, GameConstants.ComboCap + 1];
+            int wrongShardLimit = GameConstants.MaxWrongShardCount;
+            int[,,] scores = CreateScoreGrid(wrongShardLimit);
+            int[,,] counts = new int[GameConstants.LaneCount, GameConstants.ComboCap + 1, wrongShardLimit];
             int allowedLaneShift = GetAllowedLaneShiftPerRow(stage);
-            scores[1, 0] = 0;
+            scores[1, 0, 0] = 0;
 
             for (int rowIndex = 0; rowIndex < report.Rows.Count; rowIndex++)
             {
                 LevelRowReport row = report.Rows[rowIndex];
-                int[,] nextScores = CreateScoreGrid();
-                int[,] nextCounts = new int[GameConstants.LaneCount, GameConstants.ComboCap + 1];
+                int[,,] nextScores = CreateScoreGrid(wrongShardLimit);
+                int[,,] nextCounts = new int[GameConstants.LaneCount, GameConstants.ComboCap + 1, wrongShardLimit];
                 for (int lane = 0; lane < GameConstants.LaneCount; lane++)
                 {
                     for (int combo = 0; combo <= GameConstants.ComboCap; combo++)
                     {
-                        int baseScore = scores[lane, combo];
-                        if (baseScore == InvalidScore)
+                        for (int wrongShardCount = 0; wrongShardCount < wrongShardLimit; wrongShardCount++)
                         {
-                            continue;
-                        }
-
-                        for (int targetLane = 0; targetLane < GameConstants.LaneCount; targetLane++)
-                        {
-                            if (Mathf.Abs(targetLane - lane) > allowedLaneShift)
+                            int baseScore = scores[lane, combo, wrongShardCount];
+                            if (baseScore == InvalidScore)
                             {
                                 continue;
                             }
 
-                            GeneratedLaneContent content = row.GetLaneContent(targetLane);
-                            if (content == GeneratedLaneContent.Obstacle)
+                            for (int targetLane = 0; targetLane < GameConstants.LaneCount; targetLane++)
                             {
-                                continue;
-                            }
+                                if (Mathf.Abs(targetLane - lane) > allowedLaneShift)
+                                {
+                                    continue;
+                                }
 
-                            int nextCombo = combo;
-                            int nextScore = baseScore;
-                            int nextCollectibleCount = counts[lane, combo];
-                            ApplyLaneChoice(content, ref nextScore, ref nextCombo, ref nextCollectibleCount);
-                            StoreBest(nextScores, nextCounts, targetLane, nextCombo, nextScore, nextCollectibleCount);
+                                GeneratedLaneContent content = row.GetLaneContent(targetLane);
+                                if (content == GeneratedLaneContent.Obstacle)
+                                {
+                                    continue;
+                                }
+
+                                int nextCombo = combo;
+                                int nextScore = baseScore;
+                                int nextCollectibleCount = counts[lane, combo, wrongShardCount];
+                                int nextWrongShardCount = wrongShardCount;
+                                ApplyLaneChoice(content, ref nextScore, ref nextCombo, ref nextCollectibleCount, ref nextWrongShardCount);
+                                if (nextWrongShardCount >= wrongShardLimit)
+                                {
+                                    continue;
+                                }
+
+                                StoreBest(nextScores, nextCounts, targetLane, nextCombo, nextWrongShardCount, nextScore, nextCollectibleCount);
+                            }
                         }
                     }
                 }
@@ -118,16 +128,19 @@ namespace ColorGateRush
             {
                 for (int combo = 0; combo <= GameConstants.ComboCap; combo++)
                 {
-                    int candidate = scores[lane, combo];
-                    if (candidate != InvalidScore)
+                    for (int wrongShardCount = 0; wrongShardCount < wrongShardLimit; wrongShardCount++)
                     {
-                        clearRouteExists = true;
-                    }
+                        int candidate = scores[lane, combo, wrongShardCount];
+                        if (candidate != InvalidScore)
+                        {
+                            clearRouteExists = true;
+                        }
 
-                    if (candidate > bestScore)
-                    {
-                        bestScore = candidate;
-                        bestCollectibleCount = counts[lane, combo];
+                        if (candidate > bestScore)
+                        {
+                            bestScore = candidate;
+                            bestCollectibleCount = counts[lane, combo, wrongShardCount];
+                        }
                     }
                 }
             }
@@ -231,12 +244,13 @@ namespace ColorGateRush
             return 0.98f;
         }
 
-        // Applies the runtime score rules for one row-lane choice.
+        // Applies the finite Stage Mode score rules for one row-lane choice, including wrong-shard chances.
         private static void ApplyLaneChoice(
             GeneratedLaneContent content,
             ref int score,
             ref int combo,
-            ref int collectibleCount)
+            ref int collectibleCount,
+            ref int wrongShardCount)
         {
             if (content == GeneratedLaneContent.MatchingShard)
             {
@@ -247,6 +261,7 @@ namespace ColorGateRush
             else if (content == GeneratedLaneContent.OffColorShard)
             {
                 combo = 0;
+                wrongShardCount++;
                 score = Mathf.Max(0, score - GameConstants.WrongColorShardPenalty);
             }
         }
@@ -277,41 +292,46 @@ namespace ColorGateRush
             return Mathf.Clamp(target, ScoreStep * 2, estimatedMaxScore);
         }
 
-        // Estimates the average score damage caused by a missed match or wrong-color pickup.
+        // Estimates the average score damage caused by a missed match or wrong shard under the shared three-chance rule.
         private static int EstimateAverageMistakeCost(int stageIndex)
         {
             int comboPressure = stageIndex <= 3 ? 2 : (stageIndex <= 10 ? 3 : 4);
             return GameConstants.SameColorShardScore * comboPressure + GameConstants.WrongColorShardPenalty;
         }
 
-        // Creates a score grid initialized to invalid path values.
-        private static int[,] CreateScoreGrid()
+        // Creates a lane-combo-wrong-count score grid initialized to invalid path values.
+        private static int[,,] CreateScoreGrid(int wrongShardLimit)
         {
-            int[,] scores = new int[GameConstants.LaneCount, GameConstants.ComboCap + 1];
+            int[,,] scores = new int[GameConstants.LaneCount, GameConstants.ComboCap + 1, wrongShardLimit];
             for (int lane = 0; lane < GameConstants.LaneCount; lane++)
             {
                 for (int combo = 0; combo <= GameConstants.ComboCap; combo++)
                 {
-                    scores[lane, combo] = InvalidScore;
+                    for (int wrongShardCount = 0; wrongShardCount < wrongShardLimit; wrongShardCount++)
+                    {
+                        scores[lane, combo, wrongShardCount] = InvalidScore;
+                    }
                 }
             }
 
             return scores;
         }
 
-        // Keeps the best score for a lane-combo state, using collectible count as the tie breaker.
+        // Keeps the best score for a lane-combo-wrong-count state, using collectible count as the tie breaker.
         private static void StoreBest(
-            int[,] scores,
-            int[,] counts,
+            int[,,] scores,
+            int[,,] counts,
             int lane,
             int combo,
+            int wrongShardCount,
             int score,
             int collectibleCount)
         {
-            if (score > scores[lane, combo] || (score == scores[lane, combo] && collectibleCount > counts[lane, combo]))
+            if (score > scores[lane, combo, wrongShardCount]
+                || (score == scores[lane, combo, wrongShardCount] && collectibleCount > counts[lane, combo, wrongShardCount]))
             {
-                scores[lane, combo] = score;
-                counts[lane, combo] = collectibleCount;
+                scores[lane, combo, wrongShardCount] = score;
+                counts[lane, combo, wrongShardCount] = collectibleCount;
             }
         }
 

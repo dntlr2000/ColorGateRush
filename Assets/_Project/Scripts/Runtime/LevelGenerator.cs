@@ -12,8 +12,32 @@ namespace ColorGateRush
         private Transform _levelRoot;
         private float _trackLength = GameConstants.TrackLength;
         private LevelGenerationReport _lastReport;
+        private readonly Queue<EndlessGeneratedItem> _endlessItems = new Queue<EndlessGeneratedItem>();
+        private readonly List<GatePlan> _endlessGatePlans = new List<GatePlan>();
+        private bool _endlessActive;
+        private int _endlessNextRowIndex;
+        private int _endlessNextTrackIndex;
+        private int _endlessNextGateIndex;
+        private int _endlessGeneratedRows;
+        private float _endlessNextRowZ;
+        private float _endlessNextTrackCenterZ;
+        private float _endlessNextGateZ;
 
         public LevelGenerationReport LastReport => _lastReport;
+        public int EndlessGeneratedRows => _endlessGeneratedRows;
+
+        private readonly struct EndlessGeneratedItem
+        {
+            public readonly GameObject Root;
+            public readonly float Z;
+
+            // Stores a generated Endless chunk root and the z coordinate used for cleanup.
+            public EndlessGeneratedItem(GameObject root, float z)
+            {
+                Root = root;
+                Z = z;
+            }
+        }
 
         private readonly struct GatePlan
         {
@@ -75,6 +99,84 @@ namespace ColorGateRush
             return runner;
         }
 
+        // Clears finite stage content and starts a rolling Endless Mode level with no finish trigger.
+        public LaneRunnerController BeginEndless(GameManager manager, EndlessRunConfig config, bool configureScene = true)
+        {
+            ClearExistingLevel();
+            VisualTheme.SetActiveThemeIndex(2);
+            Random.InitState(config.Seed);
+            _trackLength = config.GenerateAheadDistance + 180f;
+            _lastReport = new LevelGenerationReport(0, config.Seed);
+            _endlessActive = true;
+            _endlessNextRowIndex = 0;
+            _endlessNextTrackIndex = 0;
+            _endlessNextGateIndex = 0;
+            _endlessGeneratedRows = 0;
+            _endlessNextRowZ = 10f;
+            _endlessNextTrackCenterZ = GameConstants.SegmentLength * 0.5f;
+            _endlessNextGateZ = config.FirstGateZ;
+            _endlessGatePlans.Clear();
+            _endlessItems.Clear();
+
+            GameObject rootGo = new GameObject(GeneratedLevelRootName);
+            _levelRoot = rootGo.transform;
+            _levelRoot.SetParent(transform, false);
+
+            if (configureScene)
+            {
+                CreateEnvironment();
+            }
+
+            CreateEndlessBackground(config);
+            LaneRunnerController runner = CreateEndlessPlayer(manager, config);
+            UpdateEndlessGeneration(0f, config, 0f);
+            if (configureScene)
+            {
+                ConfigureCamera(runner.transform);
+            }
+
+            ValidateSpawnedRuntimeObjects(runner);
+            return runner;
+        }
+
+        // Generates Endless rows, gates, and track ahead of the player while cleaning old chunks behind them.
+        public void UpdateEndlessGeneration(float playerZ, EndlessRunConfig config, float elapsedTime = 0f)
+        {
+            if (!_endlessActive || _levelRoot == null)
+            {
+                return;
+            }
+
+            float targetZ = playerZ + config.GenerateAheadDistance;
+            while (_endlessNextTrackCenterZ <= targetZ)
+            {
+                CreateEndlessTrackSegment(_endlessNextTrackIndex, _endlessNextTrackCenterZ);
+                _endlessNextTrackIndex++;
+                _endlessNextTrackCenterZ += GameConstants.SegmentLength;
+            }
+
+            while (_endlessNextGateZ <= targetZ)
+            {
+                StageConfig gateStage = BuildEndlessStageConfig(config, _endlessNextGateZ, elapsedTime);
+                ColorId targetColor = (ColorId)((config.Seed + _endlessNextGateIndex + 1) % gateStage.AvailableColorCount);
+                CreateEndlessGate(_endlessNextGateIndex, _endlessNextGateZ, targetColor);
+                _endlessGatePlans.Add(new GatePlan(_endlessNextGateIndex, _endlessNextGateZ, targetColor));
+                _endlessNextGateIndex++;
+                _endlessNextGateZ += config.GateInterval(elapsedTime, _endlessNextGateZ);
+            }
+
+            while (_endlessNextRowZ <= targetZ)
+            {
+                StageConfig rowStage = BuildEndlessStageConfig(config, _endlessNextRowZ, elapsedTime);
+                CreateEndlessRow(rowStage, _endlessNextRowIndex, _endlessNextRowZ);
+                _endlessNextRowIndex++;
+                _endlessGeneratedRows++;
+                _endlessNextRowZ += config.RowSpacing(elapsedTime, _endlessNextRowZ);
+            }
+
+            CleanupEndlessItems(playerZ - config.CleanupDistance);
+        }
+
         // Builds deterministic generation metadata for balance analysis without creating scene objects.
         public static LevelGenerationReport BuildGenerationReport(StageConfig stage)
         {
@@ -108,6 +210,11 @@ namespace ColorGateRush
         // Removes existing generated level roots before creating a fresh run.
         private void ClearExistingLevel()
         {
+            _endlessActive = false;
+            _endlessItems.Clear();
+            _endlessGatePlans.Clear();
+            _endlessGeneratedRows = 0;
+
             if (_levelRoot != null)
             {
                 DestroyGeneratedLevel(_levelRoot.gameObject);
@@ -165,7 +272,7 @@ namespace ColorGateRush
             RenderSettings.fog = true;
             RenderSettings.fogColor = theme.FogColor;
             RenderSettings.fogDensity = 0.010f;
-            RenderSettings.ambientLight = theme.AmbientColor;
+            RenderSettings.ambientLight = Color.Lerp(theme.AmbientColor, Color.black, 0.08f);
             RenderSettings.skybox = null;
             ApplySceneLighting(theme);
         }
@@ -193,31 +300,18 @@ namespace ColorGateRush
             }
 
             directionalLight.color = theme.DirectionalLightColor;
-            directionalLight.intensity = theme.DirectionalLightIntensity;
-            directionalLight.transform.rotation = Quaternion.Euler(48f, -32f, 0f);
+            directionalLight.intensity = theme.DirectionalLightIntensity * 1.08f;
+            directionalLight.shadows = LightShadows.Soft;
+            directionalLight.shadowStrength = 0.42f;
+            directionalLight.transform.rotation = Quaternion.Euler(52f, -38f, 8f);
         }
 
-        // Builds low-cost procedural backdrop panels that replace the default Unity skybox feel.
+        // Builds subtle side background accents without large backdrop planes that can read as unfinished walls.
         private void CreateBackground(StageConfig stage)
         {
             Transform backgroundRoot = CreateChildRoot("BackgroundRoot");
             float centerZ = stage.TrackLength * 0.5f;
             float length = stage.TrackLength + 36f;
-
-            ProceduralFactory.VisualPrimitive(
-                PrimitiveType.Cube,
-                "BackdropBottomPanel",
-                backgroundRoot,
-                new Vector3(0f, 2.2f, centerZ + 16f),
-                new Vector3(34f, 4.4f, 0.18f),
-                ProceduralFactory.BackdropBottomMaterial());
-            ProceduralFactory.VisualPrimitive(
-                PrimitiveType.Cube,
-                "BackdropTopPanel",
-                backgroundRoot,
-                new Vector3(0f, 6.8f, centerZ + 20f),
-                new Vector3(42f, 5.6f, 0.18f),
-                ProceduralFactory.BackdropTopMaterial());
 
             for (int side = -1; side <= 1; side += 2)
             {
@@ -231,6 +325,24 @@ namespace ColorGateRush
                 ProceduralFactory.VisualPrimitive(
                     PrimitiveType.Cube,
                     "SideHorizonLine_" + side,
+                    backgroundRoot,
+                    new Vector3(side * 5.25f, 0.18f, centerZ),
+                    new Vector3(0.08f, 0.06f, length),
+                    ProceduralFactory.TrackAccentMaterial());
+            }
+        }
+
+        // Creates a compact Endless background window without large wall panels.
+        private void CreateEndlessBackground(EndlessRunConfig config)
+        {
+            Transform backgroundRoot = CreateChildRoot("BackgroundRoot");
+            float centerZ = config.GenerateAheadDistance * 0.5f;
+            float length = config.GenerateAheadDistance + 96f;
+            for (int side = -1; side <= 1; side += 2)
+            {
+                ProceduralFactory.VisualPrimitive(
+                    PrimitiveType.Cube,
+                    "EndlessSideHorizonLine_" + side,
                     backgroundRoot,
                     new Vector3(side * 5.25f, 0.18f, centerZ),
                     new Vector3(0.08f, 0.06f, length),
@@ -256,6 +368,27 @@ namespace ColorGateRush
 
             LaneRunnerController controller = player.AddComponent<LaneRunnerController>();
             controller.Configure(manager, ColorId.Cyan, stage.PlayerForwardSpeed, stage.LaneMoveSpeed);
+            return controller;
+        }
+
+        // Creates the Endless runner with its independent speed profile.
+        private LaneRunnerController CreateEndlessPlayer(GameManager manager, EndlessRunConfig config)
+        {
+            GameObject player = ProceduralFactory.Primitive(
+                PrimitiveType.Sphere,
+                "Player",
+                _levelRoot,
+                new Vector3(0f, GameConstants.PlayerY, 0f),
+                Vector3.one * 1.1f,
+                ProceduralFactory.ColorMaterial(ColorId.Cyan),
+                isTrigger: false);
+
+            Rigidbody rb = player.AddComponent<Rigidbody>();
+            rb.isKinematic = true;
+            rb.useGravity = false;
+
+            LaneRunnerController controller = player.AddComponent<LaneRunnerController>();
+            controller.Configure(manager, ColorId.Cyan, config.StartForwardSpeed, config.LaneMoveSpeed);
             return controller;
         }
 
@@ -334,6 +467,17 @@ namespace ColorGateRush
                     ProceduralFactory.TrackAccentMaterial());
             }
 
+            for (int laneIndex = 0; laneIndex < GameConstants.LaneCount; laneIndex++)
+            {
+                ProceduralFactory.VisualPrimitive(
+                    PrimitiveType.Cube,
+                    "LaneSurfaceSheen_" + laneIndex,
+                    visualRoot,
+                    new Vector3(GameConstants.LaneX[laneIndex], 0.052f, centerZ),
+                    new Vector3(GameConstants.LaneSpacing * 0.46f, 0.018f, length * 0.92f),
+                    ProceduralFactory.TrackSheenMaterial());
+            }
+
             int stripeIndex = 0;
             for (float z = 9f; z < stage.TrackLength - 10f; z += 18f)
             {
@@ -348,12 +492,151 @@ namespace ColorGateRush
             }
         }
 
+        // Creates one short Endless track segment and visual lane cues for rolling generation.
+        private void CreateEndlessTrackSegment(int index, float centerZ)
+        {
+            GameObject rootGo = new GameObject("EndlessTrackSegment_" + index.ToString("0000"));
+            rootGo.transform.SetParent(_levelRoot, false);
+            rootGo.transform.position = new Vector3(0f, 0f, centerZ);
+            Transform root = rootGo.transform;
+
+            ProceduralFactory.Primitive(
+                PrimitiveType.Cube,
+                "EndlessTrackBase_" + index.ToString("0000"),
+                root,
+                new Vector3(0f, -0.12f, centerZ),
+                new Vector3(GameConstants.TrackWidth, 0.2f, GameConstants.SegmentLength + 0.05f),
+                ProceduralFactory.TrackMaterial(),
+                isTrigger: false);
+
+            foreach (float laneX in GameConstants.LaneX)
+            {
+                ProceduralFactory.VisualPrimitive(
+                    PrimitiveType.Cube,
+                    "EndlessLaneStrip_" + laneX.ToString("0.0"),
+                    root,
+                    new Vector3(laneX, 0.01f, centerZ),
+                    new Vector3(0.08f, 0.04f, GameConstants.SegmentLength),
+                    ProceduralFactory.LaneStripMaterial());
+            }
+
+            float railX = GameConstants.TrackWidth * 0.5f + 0.12f;
+            for (int side = -1; side <= 1; side += 2)
+            {
+                ProceduralFactory.VisualPrimitive(
+                    PrimitiveType.Cube,
+                    "EndlessTrackEdgeRail_" + side,
+                    root,
+                    new Vector3(side * railX, 0.12f, centerZ),
+                    new Vector3(0.16f, 0.22f, GameConstants.SegmentLength + 0.15f),
+                    ProceduralFactory.TrackEdgeMaterial());
+            }
+
+            EnqueueEndlessItem(rootGo, centerZ);
+        }
+
         // Creates a named child root under the generated level root for validator-friendly visual grouping.
         private Transform CreateChildRoot(string name)
         {
             GameObject root = new GameObject(name);
             root.transform.SetParent(_levelRoot, false);
             return root.transform;
+        }
+
+        // Creates one Endless gate chunk and keeps it separate for cleanup.
+        private void CreateEndlessGate(int index, float z, ColorId target)
+        {
+            GameObject rootGo = new GameObject("EndlessGate_" + index.ToString("0000"));
+            rootGo.transform.SetParent(_levelRoot, false);
+            rootGo.transform.position = new Vector3(0f, 0f, z);
+            CreateGateRow(index, z, target, rootGo.transform);
+            EnqueueEndlessItem(rootGo, z);
+        }
+
+        // Creates one fair Endless decision row using the same row repair logic as Stage Mode.
+        private void CreateEndlessRow(StageConfig stage, int rowIndex, float rowZ)
+        {
+            GameObject rootGo = new GameObject("EndlessRow_" + rowIndex.ToString("0000"));
+            rootGo.transform.SetParent(_levelRoot, false);
+            rootGo.transform.position = new Vector3(0f, 0f, rowZ);
+            Transform rowRoot = rootGo.transform;
+            ColorId expectedColor = GetExpectedColorAtZ(rowZ, _endlessGatePlans);
+            GeneratedLaneContent[] contents = IsNearGateRow(rowZ, _endlessGatePlans) ? CreateEmptyRow() : GenerateRow(stage);
+            UnsafeRowReason repairReason = EvaluateRowSafety(contents);
+            if (repairReason != UnsafeRowReason.None)
+            {
+                RepairUnsafeRow(contents, stage, rowIndex);
+            }
+
+            for (int laneIndex = 0; laneIndex < GameConstants.LaneCount; laneIndex++)
+            {
+                ColorId objectColor = expectedColor;
+                if (contents[laneIndex] == GeneratedLaneContent.OffColorShard)
+                {
+                    objectColor = RandomOffColor(stage, expectedColor);
+                }
+
+                if (contents[laneIndex] == GeneratedLaneContent.MatchingShard || contents[laneIndex] == GeneratedLaneContent.OffColorShard)
+                {
+                    CreateShard(rowIndex, laneIndex, rowZ, objectColor, rowRoot);
+                }
+                else if (contents[laneIndex] == GeneratedLaneContent.Obstacle)
+                {
+                    CreateObstacle(rowIndex, laneIndex, rowZ, rowRoot);
+                }
+            }
+
+            EnqueueEndlessItem(rootGo, rowZ);
+        }
+
+        // Converts distance into a temporary StageConfig so Endless rows reuse stage fairness and density rules.
+        private static StageConfig BuildEndlessStageConfig(EndlessRunConfig config, float distance, float elapsedTime)
+        {
+            float difficulty = config.Difficulty01(elapsedTime, distance);
+            int virtualStage = Mathf.Clamp(4 + Mathf.FloorToInt(distance / 260f), 4, StageManager.TotalStageCount);
+            float obstacleChance = Mathf.Lerp(config.ObstacleChanceStart, config.ObstacleChanceMax, difficulty);
+            float matchingChance = Mathf.Lerp(config.MatchingShardChanceStart, config.MatchingShardChanceEnd, difficulty);
+            float offColorChance = Mathf.Lerp(config.OffColorShardChanceStart, config.OffColorShardChanceEnd, difficulty);
+            float safeEmptyChance = Mathf.Lerp(config.SafeEmptyLaneChanceStart, config.SafeEmptyLaneChanceEnd, difficulty);
+            return new StageConfig(
+                virtualStage,
+                config.Seed + virtualStage,
+                Mathf.Max(220f, distance + config.GenerateAheadDistance),
+                48,
+                obstacleChance,
+                matchingChance,
+                offColorChance,
+                safeEmptyChance,
+                config.GateInterval(elapsedTime, distance),
+                4,
+                1,
+                1,
+                config.ForwardSpeed(elapsedTime, distance),
+                config.LaneMoveSharpness(elapsedTime, distance),
+                0,
+                0,
+                1,
+                StageScoreAnalyzer.GetDifficultyTier(virtualStage),
+                virtualStage % VisualTheme.ThemeVariationCount);
+        }
+
+        // Queues an Endless chunk for later cleanup once it is safely behind the camera.
+        private void EnqueueEndlessItem(GameObject root, float z)
+        {
+            _endlessItems.Enqueue(new EndlessGeneratedItem(root, z));
+        }
+
+        // Destroys generated Endless chunks that are far behind the player.
+        private void CleanupEndlessItems(float cleanupBeforeZ)
+        {
+            while (_endlessItems.Count > 0 && _endlessItems.Peek().Z < cleanupBeforeZ)
+            {
+                EndlessGeneratedItem item = _endlessItems.Dequeue();
+                if (item.Root != null)
+                {
+                    DestroyGeneratedLevel(item.Root);
+                }
+            }
         }
 
         // Places deterministic color shards across lanes while leaving periodic gaps.
@@ -648,7 +931,7 @@ namespace ColorGateRush
             return false;
         }
 
-        // Checks whether a row gives the player at least one neutral or beneficial option.
+        // Checks whether a row gives the player at least one non-failing option under off-color-as-unsafe rules.
         private static UnsafeRowReason EvaluateRowSafety(GeneratedLaneContent[] contents)
         {
             int obstacles = 0;
@@ -740,11 +1023,12 @@ namespace ColorGateRush
         }
 
         // Creates one shard at the exact row and lane coordinate.
-        private void CreateShard(int rowIndex, int laneIndex, float rowZ, ColorId color)
+        private void CreateShard(int rowIndex, int laneIndex, float rowZ, ColorId color, Transform parent = null)
         {
+            Transform objectParent = parent != null ? parent : _levelRoot;
             Vector3 position = new Vector3(GetLaneX(laneIndex), 0.8f, rowZ);
             GameObject shard = ProceduralFactory.CreateShardVisual(
-                _levelRoot,
+                objectParent,
                 $"Shard_Row{rowIndex:00}_Lane{laneIndex}",
                 position,
                 color);
@@ -753,36 +1037,38 @@ namespace ColorGateRush
         }
 
         // Creates one obstacle at the exact row and lane coordinate.
-        private void CreateObstacle(int rowIndex, int laneIndex, float rowZ)
+        private void CreateObstacle(int rowIndex, int laneIndex, float rowZ, Transform parent = null)
         {
+            Transform objectParent = parent != null ? parent : _levelRoot;
             Vector3 position = new Vector3(GetLaneX(laneIndex), 0.65f, rowZ);
             GameObject obstacle = ProceduralFactory.Primitive(
                 PrimitiveType.Cube,
                 $"Obstacle_Row{rowIndex:00}_Lane{laneIndex}",
-                _levelRoot,
+                objectParent,
                 position,
                 new Vector3(1.25f, 1.25f, 1.25f),
                 ProceduralFactory.ObstacleMaterial(),
                 isTrigger: true);
             obstacle.AddComponent<ObstacleBlock>();
-            CreateObstacleDetails(rowIndex, laneIndex, rowZ, position);
+            CreateObstacleDetails(rowIndex, laneIndex, rowZ, position, objectParent);
         }
 
         // Adds visual-only warning stripes and spikes to make obstacle lanes read as dangerous.
-        private void CreateObstacleDetails(int rowIndex, int laneIndex, float rowZ, Vector3 basePosition)
+        private void CreateObstacleDetails(int rowIndex, int laneIndex, float rowZ, Vector3 basePosition, Transform parent = null)
         {
+            Transform objectParent = parent != null ? parent : _levelRoot;
             string suffix = "_Row" + rowIndex.ToString("00") + "_Lane" + laneIndex;
             ProceduralFactory.VisualPrimitive(
                 PrimitiveType.Cube,
                 "ObstacleWarningTop" + suffix,
-                _levelRoot,
+                objectParent,
                 basePosition + new Vector3(0f, 0.66f, 0f),
                 new Vector3(1.32f, 0.08f, 0.18f),
                 ProceduralFactory.ObstacleWarningMaterial());
             ProceduralFactory.VisualPrimitive(
                 PrimitiveType.Cube,
                 "ObstacleWarningFront" + suffix,
-                _levelRoot,
+                objectParent,
                 new Vector3(basePosition.x, basePosition.y + 0.18f, rowZ - 0.64f),
                 new Vector3(1.16f, 0.10f, 0.06f),
                 ProceduralFactory.ObstacleWarningMaterial());
@@ -793,7 +1079,7 @@ namespace ColorGateRush
                 ProceduralFactory.VisualPrimitive(
                     PrimitiveType.Cube,
                     "ObstacleSpike" + i + suffix,
-                    _levelRoot,
+                    objectParent,
                     new Vector3(basePosition.x + offsetX, basePosition.y + 0.88f, rowZ),
                     new Vector3(0.18f, 0.40f, 0.18f),
                     ProceduralFactory.ObstacleWarningMaterial());
@@ -853,42 +1139,44 @@ namespace ColorGateRush
         }
 
         // Builds a full-width transparent gate trigger with a visible primitive arch.
-        private void CreateGateRow(int index, float z, ColorId target)
+        private void CreateGateRow(int index, float z, ColorId target, Transform parent = null)
         {
+            Transform objectParent = parent != null ? parent : _levelRoot;
             Material gateMaterial = ProceduralFactory.GatePanelMaterial(target);
             GameObject trigger = ProceduralFactory.Primitive(
                 PrimitiveType.Cube,
                 "GateTrigger_" + index,
-                _levelRoot,
+                objectParent,
                 new Vector3(0f, 1.35f, z),
                 new Vector3(GameConstants.TrackWidth, 2.4f, 0.5f),
                 gateMaterial,
                 isTrigger: true);
             trigger.AddComponent<ColorGate>().Configure(target);
-            ProceduralFactory.CreateColorShapeMarker(_levelRoot, "GateShape_" + index, new Vector3(0f, 3.05f, z - 0.35f), target, 0.7f);
+            ProceduralFactory.CreateColorShapeMarker(objectParent, "GateShape_" + index, new Vector3(0f, 3.05f, z - 0.35f), target, 0.7f);
 
             Material frameMaterial = ProceduralFactory.ColorMaterial(target);
-            ProceduralFactory.VisualPrimitive(PrimitiveType.Cube, "GateLeftPost_" + index, _levelRoot, new Vector3(-3.8f, 1.2f, z), new Vector3(0.25f, 2.4f, 0.35f), frameMaterial);
-            ProceduralFactory.VisualPrimitive(PrimitiveType.Cube, "GateRightPost_" + index, _levelRoot, new Vector3(3.8f, 1.2f, z), new Vector3(0.25f, 2.4f, 0.35f), frameMaterial);
-            ProceduralFactory.VisualPrimitive(PrimitiveType.Cube, "GateTop_" + index, _levelRoot, new Vector3(0f, 2.45f, z), new Vector3(7.8f, 0.25f, 0.35f), frameMaterial);
-            CreateGateVisualCues(index, z, target);
+            ProceduralFactory.VisualPrimitive(PrimitiveType.Cube, "GateLeftPost_" + index, objectParent, new Vector3(-3.8f, 1.2f, z), new Vector3(0.25f, 2.4f, 0.35f), frameMaterial);
+            ProceduralFactory.VisualPrimitive(PrimitiveType.Cube, "GateRightPost_" + index, objectParent, new Vector3(3.8f, 1.2f, z), new Vector3(0.25f, 2.4f, 0.35f), frameMaterial);
+            ProceduralFactory.VisualPrimitive(PrimitiveType.Cube, "GateTop_" + index, objectParent, new Vector3(0f, 2.45f, z), new Vector3(7.8f, 0.25f, 0.35f), frameMaterial);
+            CreateGateVisualCues(index, z, target, objectParent);
         }
 
         // Adds gate approach stripes and soft frame accents that read as color-change cues.
-        private void CreateGateVisualCues(int index, float z, ColorId target)
+        private void CreateGateVisualCues(int index, float z, ColorId target, Transform parent = null)
         {
+            Transform objectParent = parent != null ? parent : _levelRoot;
             Material cueMaterial = ProceduralFactory.TransparentMaterial("gate_cue_" + target, GameConstants.ToUnityColor(target), 0.42f);
             ProceduralFactory.VisualPrimitive(
                 PrimitiveType.Cube,
                 "GateApproachCue_" + index,
-                _levelRoot,
+                objectParent,
                 new Vector3(0f, 0.055f, z - 2.15f),
                 new Vector3(GameConstants.TrackWidth - 0.65f, 0.045f, 0.22f),
                 cueMaterial);
             ProceduralFactory.VisualPrimitive(
                 PrimitiveType.Cube,
                 "GateExitCue_" + index,
-                _levelRoot,
+                objectParent,
                 new Vector3(0f, 0.055f, z + 1.35f),
                 new Vector3(GameConstants.TrackWidth - 1.1f, 0.045f, 0.14f),
                 cueMaterial);
@@ -898,7 +1186,7 @@ namespace ColorGateRush
                 ProceduralFactory.VisualPrimitive(
                     PrimitiveType.Cube,
                     "GateSideGlow_" + index + "_" + side,
-                    _levelRoot,
+                    objectParent,
                     new Vector3(side * 3.35f, 1.35f, z - 0.02f),
                     new Vector3(0.10f, 2.0f, 0.16f),
                     cueMaterial);

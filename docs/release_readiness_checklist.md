@@ -2,6 +2,8 @@
 
 Color Gate Rush is ready for manual Android/WebGL build validation after RC QA. This checklist does not require network access, external assets, generated keystores, or command-line builds.
 
+For tester-session flow, survey questions, and local stats usage, also see `docs/playtest_checklist.md`.
+
 ## Editor Menu Order
 
 Run these in the Unity Editor before any manual build:
@@ -13,6 +15,8 @@ Run these in the Unity Editor before any manual build:
 5. `Tools/Color Gate Rush/Generate Balance Report`
 6. `Tools/Color Gate Rush/Generate Release Readiness Report`
 7. `Tools/Color Gate Rush/Apply Visual Theme`
+8. Optional before a fresh playtest: `Tools/Color Gate Rush/Reset Playtest Stats`
+9. Optional before an Endless record retest: `Tools/Color Gate Rush/Reset Endless Records`
 
 Hard failures must be fixed before packaging. Warnings identify manual release decisions such as package name, signing, icon, store metadata, and real device tests.
 
@@ -37,8 +41,9 @@ Hard failures must be fixed before packaging. Warnings identify manual release d
 - Runtime generated components use generic component creation, not `AddComponent(string)` or `GameObject.CreatePrimitive`.
 - `Universal Render Pipeline/Lit` is absent from Graphics Settings Always Included Shaders.
 - Runtime base materials exist under `Assets/_Project/Resources/ColorGateRush/Materials`.
+- The approved main menu background exists at `Assets/_Project/Resources/ColorGateRush/Images/MainMenuBackground.png`.
 - Pink-material prevention uses Resources material asset references, not full URP shader Always Included entries.
-- Opaque runtime objects use the `CGR_SimpleLitOpaque` material reference and still show lighting/shadow depth in device builds.
+- Opaque runtime objects use `CGR_SimpleLit*` material references and still show lighting/shadow depth in device builds.
 - Scripting Backend and target architectures are reviewed; Google Play release builds should include ARM64.
 - Development Build is off for release-candidate distribution builds.
 - Use APK for local device testing.
@@ -59,7 +64,7 @@ Hard failures must be fixed before packaging. Warnings identify manual release d
 
 - Main scene is the only game startup scene.
 - PlayerPrefs progress uses simple `CGR_` keys.
-- No Quit-only flow is required.
+- Quit button shows a browser-tab notice; WebGL should not rely on closing the page from code.
 - Canvas Scaler, ScrollRect, and large button targets are checked in browser-sized windows.
 - Browser AudioContext may block sound until the first user gesture; test after clicking Start.
 - Compression, memory, and loading time are reviewed after the build.
@@ -83,23 +88,34 @@ Hard failures must be fixed before packaging. Warnings identify manual release d
 - Failed and Completed screens do not auto-restart.
 - Stage clear with at least 1 star unlocks the next stage.
 - Best stars never downgrade.
+- MainMenu Endless Mode starts a record run with no finish line, no star messaging, and no stage unlock changes.
+- Endless HUD shows score, distance, best score, best distance, wrong-shard chance icons, current color/shape, and speed multiplier.
+- Endless speed rises from elapsed time/distance without using `Time.timeScale`; row spacing and lane movement remain readable as speed increases.
+- Stage and Endless wrong-color shard count reaches 1/3 and 2/3 without ending the run, then 3/3 triggers failure with the wrong-shard limit reason.
+- Stage Mode route-aware scoring tracks wrong-shard count state and treats the third wrong shard as a failed route.
+- Endless failure result can Retry or return to MainMenu/StageSelect and saves best score/distance with failure reason.
+- MainMenu Quit exits Android/PC builds only from the explicit button; Editor/WebGL show safe feedback.
+- MainMenu Playtest Stats opens a scrollable Stage 1-30 local stats view.
+- Reset Playtest Stats clears only `CGR_Stats_` counters and does not reset unlocks, best stars, tutorial, or settings.
+- Reset Endless Records clears only `CGR_Endless...` counters and does not reset unlocks, best stars, tutorial, settings, or playtest stats.
 - StageSelect shows 30 stages with locked/unlocked/star states.
 - HUD remains readable on a small portrait screen.
 - Pause button and top-left HUD do not overlap the safe area.
 - Collect, gate, hit, and finish VFX stay readable and short.
-- Menu/gameplay BGM does not overlap across Start, Pause, Retry, Failed, Completed, StageSelect, and MainMenu transitions.
-- Music Off, SFX Off, Music Volume, and SFX Volume settings work independently.
+- Menu BGM (`ColorgateRush_Menu.mp3`) and gameplay BGM (`ColorgateRush_Ingame.mp3`) do not overlap across Start, Pause, Retry, Failed, Completed, StageSelect, Endless, and MainMenu transitions.
+- Music Off, SFX Off, Music Volume slider, and SFX Volume slider settings work independently.
 - Android Logcat does not contain `Can't add component because 'BoxCollider' doesn't exist!`.
 - Android generated materials are not pink.
 - PC builds show player, track, shards, obstacles, gates, finish, VFX, and HUD after starting Stage 1.
 - Development Build runtime visual self-check reports healthy renderer, mesh, material, collider, and camera counts.
 - No obvious frame drops, overheating, or memory growth appears during several retries.
+- No obvious object buildup occurs during a several-minute Endless run while speed, obstacle pressure, off-color pressure, and gate frequency rise gradually.
 
 ## Android Pink Material / Component Log Checks
 
 - If pink procedural materials appear, rerun `Validate Runtime Visuals`.
 - Confirm `ProjectSettings/GraphicsSettings.asset` does not include the URP/Lit shader GUID.
-- Confirm `Assets/_Project/Resources/ColorGateRush/Materials` contains `CGR_SimpleLitOpaque`, `CGR_UnlitTransparent`, and `CGR_ParticleUnlit`.
+- Confirm `Assets/_Project/Resources/ColorGateRush/Materials` contains `CGR_SimpleLitOpaque`, `CGR_SimpleLitShard`, `CGR_SimpleLitTrack`, `CGR_SimpleLitObstacle`, `CGR_SimpleLitFinish`, `CGR_UnlitTransparent`, and `CGR_ParticleUnlit`.
 - Confirm opaque objects cast/receive shadows while transparent gate/background/VFX objects remain shadow-free.
 - Confirm procedural objects are created through `ProceduralFactory.Primitive` and generic collider helpers.
 - Confirm no source file contains `AddComponent("...")` or `GameObject.CreatePrimitive`.
@@ -112,6 +128,16 @@ Hard failures must be fixed before packaging. Warnings identify manual release d
 - Check the log line `Color Gate Rush runtime visual self-check`.
 - Investigate immediately if renderer count is low, invalid material count is nonzero, missing mesh count is nonzero, or the camera culling/far clip summary looks wrong.
 
+## Audio Asset Policy
+
+- Only these user-provided BGM files are approved imported audio:
+  - `Assets/_Project/Resources/ColorGateRush/Audio/ColorgateRush_Menu.mp3`
+  - `Assets/_Project/Resources/ColorGateRush/Audio/ColorgateRush_Ingame.mp3`
+- Do not add additional BGM/SFX files without an explicit asset/license review.
+- Current SFX remain procedural.
+- Large background/platform polish is deferred to launch or post-launch visual polish; current validation focuses on build compatibility, speed/spacing feel, Quit, and Endless MVP.
+- Imported visual media remains limited to the approved main menu background image; gameplay objects still use procedural geometry/materials.
+
 ## Save/Progress Test Scenario
 
 1. Reset Local Progress from the Color Gate Rush menu.
@@ -120,18 +146,33 @@ Hard failures must be fixed before packaging. Warnings identify manual release d
 4. Replay Stage 1 with a lower star result and confirm best stars do not downgrade.
 5. Restart the app or refresh the WebGL page and confirm progress persists.
 
+## Playtest Stats Scenario
+
+1. Use `Reset Playtest Stats` before a clean tester session.
+2. Start Stage 1 and confirm Attempts increases by 1.
+3. Fail once and confirm Fails, Last Score, and Last Stars update without unlocking a stage.
+4. Clear once and confirm Clears, Clear Rate, Best Score, Best Stars, and Last Score update.
+5. Pause a run and leave through Main Menu or Stage Select; confirm Quits increases rather than Fails.
+6. Use Reset Playtest Stats again and confirm progress, best stars, tutorial, and settings remain unchanged.
+
 ## Audio And Visual Quality Status
 
-Implemented procedural audio/visual quality pass:
+Implemented audio/visual quality pass:
 
-- Menu and gameplay procedural BGM loops are generated with `AudioClip.Create`.
-- Gameplay music varies slightly by stage tier.
+- Menu and gameplay BGM are loaded from the approved Resources MP3 clips.
+- Procedural BGM loops remain as fallback if the approved clips are missing.
 - Completed and Failed use short procedural stings.
-- Music/SFX toggles and volume steps use `CGR_` PlayerPrefs keys.
+- Music/SFX toggles and draggable volume sliders use `CGR_` PlayerPrefs keys.
 - Collect, gate, fail, and finish VFX use short mobile-safe burst/ring layers.
 - Track polish includes side rails, lane separators, edge glow, side light strips, and rhythm stripes.
 
-External music files still require license review. Under the current automation policy, use procedural BGM or directly produced/licensed audio only.
+Additional external music files still require license review. Under the current automation policy, use only the approved BGM files, procedural audio, or directly produced/licensed audio that has been explicitly added to the allowlist.
+
+Playtest readiness status:
+
+- Do not add more BGM/SFX before the next playtest pass.
+- Keep current BGM Resources loading and procedural SFX structure stable.
+- Prioritize stage difficulty, UI readability, touch feel, save/unlock consistency, and Android/PC build stability feedback.
 
 Follow-up quality work after device testing:
 

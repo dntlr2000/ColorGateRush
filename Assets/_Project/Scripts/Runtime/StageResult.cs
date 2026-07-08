@@ -1,5 +1,12 @@
 namespace ColorGateRush
 {
+    public enum StageFailReason
+    {
+        None,
+        ObstacleHit,
+        WrongShardLimit
+    }
+
     public readonly struct StageResult
     {
         public readonly int StageIndex;
@@ -10,6 +17,7 @@ namespace ColorGateRush
         public readonly bool BestStarsImproved;
         public readonly bool NextStageUnlocked;
         public readonly bool HasNextStage;
+        public readonly StageFailReason FailReason;
 
         // Stores the saved outcome of a completed or failed stage attempt.
         public StageResult(
@@ -20,7 +28,8 @@ namespace ColorGateRush
             int bestStars,
             bool bestStarsImproved,
             bool nextStageUnlocked,
-            bool hasNextStage)
+            bool hasNextStage,
+            StageFailReason failReason = StageFailReason.None)
         {
             StageIndex = stageIndex;
             Score = score;
@@ -30,6 +39,7 @@ namespace ColorGateRush
             BestStarsImproved = bestStarsImproved;
             NextStageUnlocked = nextStageUnlocked;
             HasNextStage = hasNextStage;
+            FailReason = failReason;
         }
     }
 }

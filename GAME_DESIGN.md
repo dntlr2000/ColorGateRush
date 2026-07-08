@@ -9,29 +9,34 @@
 - **단일 핵심 입력**: 좌우 이동만 필요합니다.
 - **단순 충돌 규칙**: collect, gate, obstacle, finish 네 가지 trigger만 있으면 됩니다.
 - **절차 생성 친화적**: 트랙, 샤드, 게이트, 장애물 모두 규칙 기반 배치가 가능합니다.
-- **외부 에셋 불필요**: 구, 큐브, 캡슐, 파티클, 머티리얼만으로 충분합니다.
+- **외부 다운로드 에셋 불필요**: gameplay는 구, 큐브, 캡슐, 파티클, 머티리얼만으로 구성합니다. 메인 메뉴만 승인된 사용자 제공 배경 이미지를 `Resources`에서 사용합니다.
 - **테스트 쉬움**: 에디터에서 WASD/Arrow, 모바일에서 swipe/tap으로 검증 가능합니다.
 
 ## 3. Core Loop
 
 1. Player starts from Main Menu.
 2. Main Menu Start opens Stage Select instead of starting a run.
-3. Selecting an unlocked stage starts that stage.
-4. Player moves forward at constant speed during Playing.
-5. Stage 1 first entry shows a short Korean tutorial once.
-6. Player can pause during Playing and resume the same run.
-7. Same-color shard increases score and combo with floating score feedback.
-8. Wrong-color shard breaks combo or subtracts score.
-9. Gate changes player color and current target shape.
-10. Obstacle causes fail or heavy penalty.
-11. Finish line clears the stage and locks in the current score.
-12. Result is shown until the player explicitly chooses Retry, Stage Select, Main Menu, or Next Stage.
+3. Main Menu Endless Mode starts an independent record run.
+4. Main Menu Quit requests application exit on Android/PC builds; Editor/WebGL are handled safely.
+5. Selecting an unlocked stage starts that stage.
+6. Player moves forward during Playing, with higher campaign speed paired with wider row spacing for preserved reaction time.
+7. Stage 1 first entry shows a short Korean tutorial once.
+8. Player can pause during Playing and resume the same run.
+9. Same-color shard increases score and combo with floating score feedback.
+10. Stage Mode wrong-color shards use the same three-chance failure rule as Endless Mode.
+11. Gate changes player color and current target shape.
+12. Obstacle causes fail or heavy penalty.
+13. Finish line clears finite stages and locks in the current score.
+14. Endless Mode has no finish, stars, or unlocks; it keeps getting faster and harder until failure and saves best score/distance.
+15. Result is shown until the player explicitly chooses Retry, Stage Select, Main Menu, or Next Stage.
+16. Playtest Stats can be opened from Main Menu to review local attempts, clears, fails, quits, best scores, and best stars without affecting progression.
 
 ## 4. Controls
 
 - Desktop test: `A/LeftArrow` = left lane, `D/RightArrow` = right lane.
 - Pause: `ESC` or `P` toggles pause/resume during gameplay.
 - Pause shortcuts: `R` retries the current stage, `M` returns to Main Menu.
+- Android Back/Escape: gameplay pauses; submenus return to Main Menu.
 - Mobile: horizontal swipe changes lane.
 - Optional alternate: left/right half-screen tap.
 - UI buttons are ignored by lane-touch input through EventSystem checks.
@@ -48,34 +53,61 @@
 | Obstacle | Warning block + stripe/spike accents | Fail or penalty | Primitive Cubes |
 | Finish | Trigger plane + arch/checker strip | Ends run | Primitive Cubes |
 | Particles | ParticleSystem | Collect/gate/fail/finish feedback | Built-in ParticleSystem |
-| Audio | Runtime sine waves and short loops | Menu/gameplay BGM, collect/gate/hit/result | `AudioClip.Create` |
+| Audio | Approved user BGM + runtime sine waves | Menu/gameplay BGM, collect/gate/hit/result | Resources AudioClip + `AudioClip.Create` |
 | Player accent | Color-specific primitive shape | Shows current target color/shape without text overlay | Primitive Sphere/Cube/Capsule |
 
 ## 6. Scoring
 
 - Same-color shard: +10 × comboMultiplier.
 - Combo increases every successful shard, capped at 10.
-- Wrong-color shard: -15 and combo reset.
+- Wrong-color shard: -15, combo reset, and one strike toward the 3-strike game over.
 - Gate: +5 feedback score, changes player color.
 - Finish: clears the stage; star rating uses the current score shown in the HUD.
-- Combo is reset by wrong-color shards and obstacles.
+- Combo is reset by obstacles and by wrong-color shard strikes; the third wrong-color shard ends the run.
 
 ## 6.1 Feedback and Accessibility
 
 - Successful collection uses colored particles, a small sparkle layer, procedural SFX, and floating score text.
-- Wrong-color shards and obstacles use red/warning fail particles, shock rings, buzz SFX, and clear HUD messages.
+- Wrong-color shards and obstacles use red/warning fail particles, shock rings, buzz SFX, and clear failure messages.
 - Gates display a short color-change message, a small primitive target marker, a pulse burst, and a rising procedural tone.
-- Menu and gameplay screens use separate lightweight procedural BGM loops; completed/failed screens use short stings instead of external audio files.
+- Menu and gameplay screens use the approved user-provided BGM clips from `Resources/ColorGateRush/Audio`; completed/failed screens use short procedural stings.
 - Every gameplay color has a paired shape: Cyan 구슬, Magenta 큐브, Yellow 캡슐, Lime 다이아.
 - Shards, player accent, and the HUD use the same color/shape source of truth; no black TextMesh symbols are placed above shards or the player.
-- Settings include Music, SFX, volume steps, Camera Shake, and Color Assist controls saved with `CGR_` PlayerPrefs keys.
+- Settings include Music, SFX, fine Music/SFX volume sliders, Camera Shake, and Color Assist controls saved with `CGR_` PlayerPrefs keys.
+- SFX remain procedural for now; any future third-party or replacement audio must be tracked separately before inclusion.
+
+## 6.2 Playtest Readiness
+
+- Stage starts increment a local attempt counter.
+- Completed runs record clears, final score, stars, best score, best stars, and 3-star count.
+- Failed runs record fails and final score without changing stage progression.
+- Pause-to-menu, pause-to-stage-select, and pause retry exits record as quits so they are distinguishable from obstacle failures.
+- Playtest stats use only `CGR_Stats_` PlayerPrefs keys and are never transmitted externally.
+- Reset Progress and Reset Playtest Stats are separate actions.
+- Endless records are separate from stage progress and use `CGR_Endless...` PlayerPrefs keys.
+
+## 6.3 Endless Mode MVP
+
+- Entry: Main Menu `Endless Mode`.
+- Rules: no finish line, no stars, no stage unlock writes.
+- Objective: run until obstacle failure or until three wrong-color shards are collected while building score and distance.
+- Difficulty starts around Stage 3-5 pressure and ramps by elapsed time plus distance through forward speed, row spacing, obstacle chance, off-color pressure, and gate interval.
+- Forward speed keeps increasing through an Endless-specific speed formula; `Time.timeScale` is used only for pause/resume.
+- Row spacing and lane-move sharpness rise with speed so the mode feels faster without becoming instantly unreadable.
+- Wrong-color shards are three strikes in both finite stages and Endless Mode: 0/3, 1/3, 2/3 continue; 3/3 ends the run.
+- Finite Stage Mode still uses stars, finish, and unlocks; Endless Mode remains independent from stars and unlocks.
+- Generation uses rolling rows/chunks ahead of the player and cleans chunks behind the player so objects do not accumulate forever.
+- Fair row invariant still applies: no all-obstacle row, no all-off-color row, no mixed all-unsafe row, and at least one safe option.
+- Saved records: `CGR_EndlessBestScore`, `CGR_EndlessBestDistance`, `CGR_EndlessBestRows`, `CGR_EndlessAttempts`, `CGR_EndlessTotalRuns`.
+- Reset Endless Records is separate from Reset Local Progress and Reset Playtest Stats.
 
 ## 7. Level Generation Rules
 
 - 3 lanes: x = -2.2, 0, +2.2.
-- Track length: about 160–370 units across the 30-stage campaign.
+- Track length: about 185–452 units across the 30-stage campaign after the speed/spacing pass.
 - Shards/obstacles are arranged in deterministic decision rows, with row count rising by stage.
-- Gate spacing starts wide and tightens toward advanced stages, about 62 down to 30 z units.
+- Gate spacing starts wide and tightens toward advanced stages, about 70 down to 36 z units.
+- Row spacing rises with speed so expected reaction time stays playable as forward speed increases.
 - Obstacle every 12–20 z units, never directly after a gate.
 - Shards and obstacles are generated on exact shared row z positions.
 - Matching shards are not forced on every row.
@@ -141,13 +173,13 @@
 - Stage 21-30 are advanced stages with the shortest gate spacing and strictest 3-star margins.
 - Clearing a stage awards at least 1 star.
 - Score targets award 2 or 3 stars.
-- `StageScoreAnalyzer` estimates a route-aware maximum score from generated row/lane data, combo, wrong-color penalties, gate score, and row-spacing-based lane movement.
+- `StageScoreAnalyzer` estimates a route-aware maximum score from generated row/lane data, combo, gate score, row-spacing-based lane movement, and off-color lanes treated as invalid fail routes.
 - A row is one decision; even if multiple matching shards appear in that row, the analyzer counts at most one lane choice and at most one shard pickup.
 - Balance reports compare naive matching-shard score against route-aware max score so impossible 3-star targets are caught.
 - 2-star targets are always the rounded-up two-thirds point of the 3-star target.
 - 3-star targets are roughly 93-98% of the route-aware maximum score, clamped below the estimated maximum.
 - Stage 1-3 allow about two mistakes for 3 stars; later stages allow only one or nearly none in practice.
-- The playing HUD shows `★1: 피니시`, 2-star and 3-star targets, and the remaining score needed for 3 stars before the finish.
+- The playing HUD shows `★1: 피니시`, 2-star and 3-star targets, the remaining score needed for 3 stars, and wrong-shard chance icons before the finish.
 - Any clear with at least 1 star unlocks the next stage.
 - 3 stars remain a near-perfect-play challenge target, not the unlock gate.
 - Pausing does not calculate stars, save progress, or unlock stages.
@@ -177,6 +209,7 @@
 - Obstacle generation must never block all lanes in one row.
 - Mixed rows where off-color shards and obstacles make all three lanes unsafe are invalid.
 - Empty lanes and expected-color shards count as safe options.
+- Off-color shards are unsafe/mistake choices because the third wrong shard fails the run.
 - Unsafe row repair favors collectible matching shards on Stage 1-2 before falling back to empty lanes.
 - Level generation produces a report that validator smoke tests can inspect.
 
@@ -184,7 +217,7 @@
 
 - Validate Build, Generate Balance Report, and Generate Release Readiness Report must pass before packaging.
 - Stage 1-30 should be manually sampled for unlock, score, pause, retry, and result-screen regressions.
-- No external art/audio/model/font/prefab assets are allowed under `Assets/_Project`.
+- No unapproved external art/audio/model/font/prefab assets are allowed under `Assets/_Project`; the allowlist contains the approved BGM clips and `Resources/ColorGateRush/Images/MainMenuBackground.png`.
 - Android and WebGL builds are manual Unity Editor tasks; automation maintains only static checks, validators, and checklists.
 - APK is for local Android testing, AAB is for Google Play submission, and keystore/signing files stay outside the repository.
 - WebGL testing must include browser persistence, resize behavior, first-input audio unlock, and keyboard/mouse/touch checks.

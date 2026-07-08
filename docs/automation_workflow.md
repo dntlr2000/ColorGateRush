@@ -40,6 +40,8 @@ The parent agent should:
 - ensure `Assets/_Project` contains no imported texture, audio, model, font, or prefab assets;
 - ensure runtime procedural objects do not use `GameObject.CreatePrimitive` or `AddComponent(string)`;
 - ensure runtime materials go through `RuntimeMaterialProvider` and Resources base material assets, not full URP shader Always Included entries;
+- ensure local playtest telemetry stays PlayerPrefs-only under `CGR_Stats_` and does not use network APIs;
+- ensure Endless records stay PlayerPrefs-only under `CGR_Endless` keys and do not mutate stage stars/unlocks;
 - run compile/build validation when Unity is available.
 
 ## Phase 4 — QA review
@@ -79,6 +81,10 @@ The final Codex response should include:
 - Validate the HUD shows 3-star remaining score and result screens show 3-star shortfall when needed.
 - Validate finish completion does not apply a hidden score multiplier before star rating.
 - Validate Main Menu Start opens Stage Select and does not directly start gameplay.
+- Validate Main Menu Endless Mode starts a finish-free record run independent from Stage Select, star targets, and stage unlocks.
+- Validate Endless Mode speed grows from elapsed gameplay time/distance and does not use `Time.timeScale` for difficulty.
+- Validate wrong-color shard count starts at 0 in Stage and Endless runs, appears as HUD chance icons, and reaches game over at 3/3.
+- Validate Main Menu Quit exists and uses `Application.Quit()` only through explicit button flow, with Editor/WebGL safe handling.
 - Validate Main Menu Settings opens Music, Music Volume, SFX, SFX Volume, Camera Shake, Color Assist, and Reset Progress controls.
 - Validate gameplay starts only from an unlocked Stage Select button.
 - Validate Stage 1 first entry shows the tutorial until the player presses OK.
@@ -99,9 +105,19 @@ The final Codex response should include:
 - Confirm persistent center gameplay guide text does not remain during normal play.
 - Confirm PlayerPrefs keys use the `CGR_` prefix.
 - Confirm Reset Local Progress deletes only `CGR_` keys and never calls `PlayerPrefs.DeleteAll`.
-- Confirm Music Off stops procedural BGM without disabling SFX.
+- Confirm Playtest Stats records attempts, clears, fails, quits, best score, best stars, last score, and last stars only at stage start/end/menu-exit events.
+- Confirm Playtest Stats uses `CGR_Stats_` keys, has no network path, and never runs per-frame saves.
+- Confirm Reset Playtest Stats deletes only `CGR_Stats_` keys and does not change unlocks, best stars, tutorial, or settings.
+- Confirm Reset Endless Records deletes only `CGR_Endless...` keys and does not change unlocks, best stars, tutorial, settings, or playtest stats.
+- Confirm Endless Mode creates no finish line, shows score/distance/best records, and cleans old generated chunks behind the player.
+- Confirm Stage and Endless HUDs show three wrong-shard chance icons, keep running at 1/3 and 2/3, and end the run at 3/3.
+- Confirm Stage Mode route-aware max includes wrong-shard count state and only invalidates routes that reach the third wrong shard.
+- Confirm Endless speed, row spacing, obstacle chance, off-color chance, and gate frequency increase gradually while fairness repair remains active.
+- Confirm Stage speed increases are paired with wider row spacing and balance report row-spacing/reaction-time output.
+- Confirm Music Off stops menu/gameplay BGM without disabling SFX.
 - Confirm SFX Off prevents collect/gate/hit/result one-shot sounds.
-- Confirm Music/SFX volume steps update playback and use `CGR_` PlayerPrefs keys.
+- Confirm Music/SFX volume sliders update playback smoothly and use `CGR_` PlayerPrefs keys.
+- Confirm menu BGM loads `ColorgateRush_Menu.mp3` and Stage/Endless gameplay loads `ColorgateRush_Ingame.mp3`.
 - Confirm menu/gameplay BGM does not overlap after menu, pause, retry, failed, and completed transitions.
 - Confirm pause/tutorial ducked music volume returns to normal when leaving those states.
 - Confirm Camera Shake Off prevents hit/finish shake.
@@ -124,6 +140,12 @@ The final Codex response should include:
 - Confirm track rails, lane separators, edge glow, side light strips, and rhythm stripes do not add blocking colliders.
 - Confirm obstacle warning stripes/spikes, gate cue strips, and finish checker tiles are visual-only.
 - Confirm shard glow and bob/spin animation preserve row/lane alignment and trigger collection.
+
+## Deferred audio and visual backlog
+
+- Only the two approved user-provided BGM clips under `Assets/_Project/Resources/ColorGateRush/Audio` are allowed as imported audio.
+- Current SFX remain procedural; future SFX replacement or additional music should be handled in a separate asset/license pass.
+- Large background/platform/visual polish is deferred to launch or post-launch polish; this pass is gameplay flow and Endless MVP focused.
 - Confirm ParticleSystem bursts remain short, low-count, and readable on mobile.
 - Confirm `Validate Visual Polish` passes before adding new content stages.
 
@@ -136,5 +158,6 @@ The final Codex response should include:
 - `Tools/Color Gate Rush/Generate Release Readiness Report`: summarize Android/WebGL static readiness, hard failures, warnings, and manual checks without running a build.
 - `Tools/Color Gate Rush/Apply Visual Theme`: apply code-defined visual tone to the open scene.
 - `Tools/Color Gate Rush/Reset Local Progress`: delete only Color Gate Rush progress keys.
+- `Tools/Color Gate Rush/Reset Playtest Stats`: delete only local playtest stat keys.
 
 Release-candidate sign-off should run Validate Build, Generate Balance Report, Generate Release Readiness Report, and Reset Local Progress manually in the Unity Editor before packaging. Follow `docs/release_readiness_checklist.md` for Android/WebGL build preparation.

@@ -37,6 +37,19 @@ namespace ColorGateRush
             SetColor(startingColor);
         }
 
+        // Updates the active forward speed range without resetting color, lane, or run time.
+        public void SetForwardSpeedRange(float baseForwardSpeed, float maxForwardSpeed)
+        {
+            _baseForwardSpeed = Mathf.Max(1f, baseForwardSpeed);
+            _maxForwardSpeed = Mathf.Max(_baseForwardSpeed, maxForwardSpeed);
+        }
+
+        // Updates lane movement sharpness so Endless speed ramps do not make lane changes feel stuck.
+        public void SetLaneMoveSharpness(float laneMoveSharpness)
+        {
+            _laneMoveSharpness = Mathf.Max(1f, laneMoveSharpness);
+        }
+
         // Caches renderer and configures physics for trigger-based kinematic movement.
         private void Awake()
         {

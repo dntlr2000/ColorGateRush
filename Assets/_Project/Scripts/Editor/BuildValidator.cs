@@ -14,6 +14,9 @@ namespace ColorGateRush.EditorTools
     public static class BuildValidator
     {
         private const string ScenePath = "Assets/_Project/Scenes/Main.unity";
+        private const string MenuBgmAssetPath = "Assets/_Project/Resources/ColorGateRush/Audio/ColorgateRush_Menu.mp3";
+        private const string GameplayBgmAssetPath = "Assets/_Project/Resources/ColorGateRush/Audio/ColorgateRush_Ingame.mp3";
+        private const string MainMenuBackgroundAssetPath = "Assets/_Project/Resources/ColorGateRush/Images/MainMenuBackground.png";
 
         [MenuItem("Tools/Color Gate Rush/Validate Project")]
         // Validates that the generated MVP scene and project rules are ready for play testing.
@@ -33,8 +36,12 @@ namespace ColorGateRush.EditorTools
             EnsureFinishUsesHudScoreForStars();
             EnsurePauseAndMenuFlowReferences();
             EnsureSettingsAndTutorialReferences();
+            EnsurePlaytestStatsReferences();
+            EnsureEndlessModeReferences();
+            EnsureStageWrongShardFailureReferences();
             EnsureStageStartHintReferences();
             EnsureVisualReadabilityReferences();
+            EnsureMainMenuBackgroundReferences();
             EnsureVisualPolishReferences();
             EnsureRuntimeComponentCreationSafety();
             EnsureRuntimeMaterialProviderSafety();
@@ -101,11 +108,15 @@ namespace ColorGateRush.EditorTools
             AppendValidation(report, "Stage progression and star targets", EnsureStageProgressionRules, ref hardFails);
             AppendValidation(report, "Stage 1-30 generation and balance smoke", EnsureRuntimeGenerationSmoke, ref hardFails);
             AppendValidation(report, "Runtime folder has no UnityEditor references", EnsureRuntimeFolderHasNoUnityEditorReferences, ref hardFails);
-            AppendValidation(report, "No imported media/font/prefab assets under Assets/_Project", EnsureNoProjectRuntimeAssets, ref hardFails);
+            AppendValidation(report, "Only approved imported BGM audio and no other imported media/font/prefab assets under Assets/_Project", EnsureNoProjectRuntimeAssets, ref hardFails);
             AppendValidation(report, "No automatic restart patterns", EnsureNoAutomaticRestartReferences, ref hardFails);
             AppendValidation(report, "No forbidden process launch or full PlayerPrefs reset usage", EnsureNoForbiddenProcessOrPrefsUsage, ref hardFails);
+            AppendValidation(report, "Local-only playtest stats hooks", EnsurePlaytestStatsReferences, ref hardFails);
+            AppendValidation(report, "Endless Mode MVP hooks", EnsureEndlessModeReferences, ref hardFails);
+            AppendValidation(report, "Shared wrong-shard three-strike rule", EnsureStageWrongShardFailureReferences, ref hardFails);
             AppendValidation(report, "Stage start hint is transient", EnsureStageStartHintReferences, ref hardFails);
             AppendValidation(report, "VisualTheme and HUD readability hooks exist", EnsureVisualPolishReferences, ref hardFails);
+            AppendValidation(report, "Main menu background image is bundled through Resources", EnsureMainMenuBackgroundReferences, ref hardFails);
             AppendValidation(report, "Runtime component/material visual safety", EnsureRuntimeVisualsForReport, ref hardFails);
             AppendRuntimeMaterialReferenceReport(report);
             AppendAndroidReadiness(report, ref warnings);
@@ -136,6 +147,22 @@ namespace ColorGateRush.EditorTools
         {
             GameSettings.ResetLocalProgress();
             Debug.Log("Color Gate Rush local CGR_ progress keys reset.");
+        }
+
+        [MenuItem("Tools/Color Gate Rush/Reset Playtest Stats")]
+        // Clears only CGR_Stats_ local playtest counters.
+        public static void ResetPlaytestStats()
+        {
+            PlaytestStats.ResetAll(StageManager.TotalStageCount);
+            Debug.Log("Color Gate Rush local CGR_Stats_ playtest keys reset.");
+        }
+
+        [MenuItem("Tools/Color Gate Rush/Reset Endless Records")]
+        // Clears only CGR_Endless local record keys.
+        public static void ResetEndlessRecords()
+        {
+            EndlessRecords.Reset();
+            Debug.Log("Color Gate Rush local CGR_Endless record keys reset.");
         }
 
         // Provides a stable entry point for Unity batchmode validation.
@@ -583,6 +610,23 @@ namespace ColorGateRush.EditorTools
                 }
             }
 
+            for (int i = 1; i < stageManager.Stages.Length; i++)
+            {
+                StageConfig previous = stageManager.Stages[i - 1];
+                StageConfig current = stageManager.Stages[i];
+                if (current.PlayerForwardSpeed - previous.PlayerForwardSpeed > 0.35f)
+                {
+                    Debug.LogWarning("Stage speed jump may feel abrupt between Stage "
+                        + previous.StageIndex + " and Stage " + current.StageIndex + ".");
+                }
+
+                if (current.ObstacleChance - previous.ObstacleChance > 0.035f)
+                {
+                    Debug.LogWarning("Obstacle chance jump may feel abrupt between Stage "
+                        + previous.StageIndex + " and Stage " + current.StageIndex + ".");
+                }
+            }
+
             StageConfig firstStage = stageManager.GetStageConfig(1);
             if (stageManager.CalculateStars(firstStage, 0, cleared: false) != 0)
             {
@@ -678,6 +722,266 @@ namespace ColorGateRush.EditorTools
             if (source.Contains("StartRun(") || source.Contains("StartStage(") || source.Contains("RestartCurrentRun("))
             {
                 throw new InvalidOperationException("RuntimeUi stage-start hint must not trigger gameplay transitions.");
+            }
+        }
+
+        // Verifies local playtest stats are recorded/reset separately from progression and never use network or DeleteAll.
+        private static void EnsurePlaytestStatsReferences()
+        {
+            string statsPath = "Assets/_Project/Scripts/Runtime/PlaytestStats.cs";
+            string gameManagerPath = "Assets/_Project/Scripts/Runtime/GameManager.cs";
+            string runtimeUiPath = "Assets/_Project/Scripts/Runtime/RuntimeUi.cs";
+            if (!File.Exists(statsPath) || !File.Exists(gameManagerPath) || !File.Exists(runtimeUiPath))
+            {
+                throw new InvalidOperationException("Missing scripts for playtest stats validation.");
+            }
+
+            string statsSource = File.ReadAllText(statsPath);
+            string gameManagerSource = File.ReadAllText(gameManagerPath);
+            string runtimeUiSource = File.ReadAllText(runtimeUiPath);
+            string[] requiredStatsTokens =
+            {
+                "CGR_Stats_",
+                "CGR_Stats_Stage_",
+                "RecordStageStarted",
+                "RecordCompleted",
+                "RecordFailed",
+                "RecordQuit",
+                "ResetAll",
+                "PlayerPrefs.DeleteKey"
+            };
+
+            foreach (string token in requiredStatsTokens)
+            {
+                if (!statsSource.Contains(token))
+                {
+                    throw new InvalidOperationException("PlaytestStats missing required local stats hook: " + token);
+                }
+            }
+
+            string[] requiredGameManagerTokens =
+            {
+                "BeginPlaytestAttempt",
+                "RecordRunCompleted",
+                "RecordRunFailed",
+                "RecordRunQuitIfOpen",
+                "ResetPlaytestStats",
+                "ShowPlaytestStats"
+            };
+
+            foreach (string token in requiredGameManagerTokens)
+            {
+                if (!gameManagerSource.Contains(token))
+                {
+                    throw new InvalidOperationException("GameManager missing playtest stats flow hook: " + token);
+                }
+            }
+
+            string[] requiredUiTokens =
+            {
+                "PlaytestStatsPanel",
+                "PlaytestStatsButton",
+                "PlaytestStatsScrollView",
+                "ResetPlaytestStatsButton",
+                "StatsResetConfirmPanel"
+            };
+
+            foreach (string token in requiredUiTokens)
+            {
+                if (!runtimeUiSource.Contains(token))
+                {
+                    throw new InvalidOperationException("RuntimeUi missing playtest stats UI hook: " + token);
+                }
+            }
+
+            if (statsSource.Contains("DeleteAll") || statsSource.Contains("System.Net") || statsSource.Contains("UnityWebRequest"))
+            {
+                throw new InvalidOperationException("PlaytestStats must stay local-only and must not call DeleteAll or network APIs.");
+            }
+        }
+
+        // Verifies Endless Mode is present, independent from stage stars/unlocks, and uses CGR-prefixed records.
+        private static void EnsureEndlessModeReferences()
+        {
+            string configPath = "Assets/_Project/Scripts/Runtime/EndlessRunConfig.cs";
+            string recordsPath = "Assets/_Project/Scripts/Runtime/EndlessRecords.cs";
+            string gameManagerPath = "Assets/_Project/Scripts/Runtime/GameManager.cs";
+            string levelGeneratorPath = "Assets/_Project/Scripts/Runtime/LevelGenerator.cs";
+            string runtimeUiPath = "Assets/_Project/Scripts/Runtime/RuntimeUi.cs";
+            string laneRunnerPath = "Assets/_Project/Scripts/Runtime/LaneRunnerController.cs";
+            string[] requiredFiles = { configPath, recordsPath, gameManagerPath, levelGeneratorPath, runtimeUiPath, laneRunnerPath };
+            foreach (string path in requiredFiles)
+            {
+                if (!File.Exists(path))
+                {
+                    throw new InvalidOperationException("Missing script for Endless Mode validation: " + path);
+                }
+            }
+
+            string configSource = File.ReadAllText(configPath);
+            string recordsSource = File.ReadAllText(recordsPath);
+            string gameManagerSource = File.ReadAllText(gameManagerPath);
+            string levelGeneratorSource = File.ReadAllText(levelGeneratorPath);
+            string runtimeUiSource = File.ReadAllText(runtimeUiPath);
+            string laneRunnerSource = File.ReadAllText(laneRunnerPath);
+            string[] requiredTokens =
+            {
+                "GameMode",
+                "Endless",
+                "StartEndlessRun",
+                "EndEndlessRun",
+                "BeginEndless",
+                "UpdateEndlessGeneration",
+                "CleanupEndlessItems",
+                "EndlessModeButton",
+                "QuitButton",
+                "ShowEndlessHud",
+                "ShowEndlessResult",
+                "CGR_EndlessBestScore",
+                "CGR_EndlessBestDistance",
+                "SetForwardSpeedRange",
+                "SetLaneMoveSharpness",
+                "SpeedGrowthPerSecond",
+                "ForwardSpeed",
+                "SpeedMultiplier",
+                "WrongShardLimit",
+                "RegisterWrongShard",
+                "EndlessFailReason",
+                "FormatMistakeIcons"
+            };
+            string combinedSource = configSource + recordsSource + gameManagerSource + levelGeneratorSource + runtimeUiSource + laneRunnerSource;
+            foreach (string token in requiredTokens)
+            {
+                if (!combinedSource.Contains(token))
+                {
+                    throw new InvalidOperationException("Endless Mode hook missing: " + token);
+                }
+            }
+
+            string beginEndlessSource = ExtractSourceWindow(levelGeneratorSource, "public LaneRunnerController BeginEndless", 1800);
+            if (beginEndlessSource.Contains("CreateFinish"))
+            {
+                throw new InvalidOperationException("Endless generation must not create a finish line.");
+            }
+
+            string endEndlessSource = ExtractSourceWindow(gameManagerSource, "private void EndEndlessRun", 900);
+            if (endEndlessSource.Contains("SaveStageResult") || endEndlessSource.Contains("CreateFailedResult") || endEndlessSource.Contains("WouldUnlockNextStage"))
+            {
+                throw new InvalidOperationException("Endless result flow must not write stage stars or unlock progress.");
+            }
+
+            string updateEndlessSource = ExtractSourceWindow(gameManagerSource, "private void UpdateEndlessRun", 1200);
+            if (!updateEndlessSource.Contains("_endlessElapsedTime += Time.deltaTime")
+                || !updateEndlessSource.Contains("ForwardSpeed(_endlessElapsedTime, _endlessDistance)")
+                || !updateEndlessSource.Contains("UpdateEndlessGeneration(_endlessDistance, _endlessConfig, _endlessElapsedTime)"))
+            {
+                throw new InvalidOperationException("Endless difficulty must grow from elapsed time and distance without using Time.timeScale.");
+            }
+
+            if (updateEndlessSource.Contains("Time.timeScale"))
+            {
+                throw new InvalidOperationException("Endless difficulty must not use Time.timeScale as a speed ramp.");
+            }
+
+            string wrongShardSource = ExtractSourceWindow(gameManagerSource, "private bool RegisterWrongShard", 1400);
+            if (!wrongShardSource.Contains("_wrongShardCount")
+                || !wrongShardSource.Contains(">= limit")
+                || !gameManagerSource.Contains("FailEndlessRun(EndlessFailReason.WrongShardLimit)"))
+            {
+                throw new InvalidOperationException("Endless wrong-shard limit must count to three and then fail the Endless run.");
+            }
+
+            string recordsResetSource = ExtractSourceWindow(recordsSource, "public static void Reset", 900);
+            if (!recordsResetSource.Contains("DeleteKey(BestScoreKey)") || recordsResetSource.Contains("DeleteAll"))
+            {
+                throw new InvalidOperationException("Endless reset must delete only explicit CGR_Endless keys.");
+            }
+
+            if (!gameManagerSource.Contains("Application.Quit()") || !gameManagerSource.Contains("UNITY_WEBGL") || !gameManagerSource.Contains("Quit requested from Main Menu."))
+            {
+                throw new InvalidOperationException("Main Menu Quit flow must safely handle build, WebGL, and Editor targets.");
+            }
+
+            if (!configSource.Contains("DefaultWrongShardLimit = GameConstants.MaxWrongShardCount"))
+            {
+                throw new InvalidOperationException("Endless wrong shard limit should use the shared GameConstants.MaxWrongShardCount value.");
+            }
+        }
+
+        // Verifies Stage and Endless modes share the three-strike wrong-shard rule without changing stage unlocks.
+        private static void EnsureStageWrongShardFailureReferences()
+        {
+            string gameManagerPath = "Assets/_Project/Scripts/Runtime/GameManager.cs";
+            string analyzerPath = "Assets/_Project/Scripts/Runtime/StageScoreAnalyzer.cs";
+            string rowReportPath = "Assets/_Project/Scripts/Runtime/LevelRowReport.cs";
+            string runtimeUiPath = "Assets/_Project/Scripts/Runtime/RuntimeUi.cs";
+            string statsPath = "Assets/_Project/Scripts/Runtime/PlaytestStats.cs";
+            string constantsPath = "Assets/_Project/Scripts/Runtime/GameConstants.cs";
+            foreach (string path in new[] { gameManagerPath, analyzerPath, rowReportPath, runtimeUiPath, statsPath, constantsPath })
+            {
+                if (!File.Exists(path))
+                {
+                    throw new InvalidOperationException("Missing script for wrong-shard failure validation: " + path);
+                }
+            }
+
+            string gameManagerSource = File.ReadAllText(gameManagerPath);
+            string analyzerSource = File.ReadAllText(analyzerPath);
+            string rowReportSource = File.ReadAllText(rowReportPath);
+            string runtimeUiSource = File.ReadAllText(runtimeUiPath);
+            string statsSource = File.ReadAllText(statsPath);
+            string constantsSource = File.ReadAllText(constantsPath);
+            string collectSource = ExtractSourceWindow(gameManagerSource, "public void HandleCollect", 2600);
+            if (!constantsSource.Contains("MaxWrongShardCount = 3"))
+            {
+                throw new InvalidOperationException("Shared wrong-shard limit must remain configured as 3.");
+            }
+
+            if (!collectSource.Contains("RegisterWrongShard()")
+                || !collectSource.Contains("FailStageRun(StageFailReason.WrongShardLimit")
+                || !collectSource.Contains("FailEndlessRun(EndlessFailReason.WrongShardLimit)"))
+            {
+                throw new InvalidOperationException("Wrong shard handling must increment the shared counter and fail Stage/Endless only when the limit is reached.");
+            }
+
+            if (collectSource.Contains("else\n                {\n                    Destroy(shard.gameObject);\n                    FailStageRun(StageFailReason.WrongShard")
+                || collectSource.Contains("StageFailReason.WrongShard,"))
+            {
+                throw new InvalidOperationException("Stage Mode must no longer fail immediately on the first wrong shard.");
+            }
+
+            string failStageSource = ExtractSourceWindow(gameManagerSource, "private void FailStageRun", 1800);
+            if (!failStageSource.Contains("CreateFailedResult(_currentStage, _score, failReason)")
+                || !failStageSource.Contains("RecordRunFailed(failReason, _wrongShardCount)")
+                || !failStageSource.Contains("StageFailReason.WrongShardLimit"))
+            {
+                throw new InvalidOperationException("Stage failure flow must record and show the wrong-shard limit reason without writing stars or unlocks.");
+            }
+
+            if (!analyzerSource.Contains("wrongShardCount")
+                || !analyzerSource.Contains("GeneratedLaneContent.OffColorShard")
+                || !analyzerSource.Contains("GameConstants.WrongColorShardPenalty")
+                || analyzerSource.Contains("content == GeneratedLaneContent.Obstacle || content == GeneratedLaneContent.OffColorShard"))
+            {
+                throw new InvalidOperationException("StageScoreAnalyzer must model wrong-shard count state and fail only routes that reach the shared limit.");
+            }
+
+            if (!rowReportSource.Contains("content == GeneratedLaneContent.Empty || content == GeneratedLaneContent.MatchingShard"))
+            {
+                throw new InvalidOperationException("LevelRowReport safe-lane counting must keep off-color shards unsafe.");
+            }
+
+            if (!runtimeUiSource.Contains("StageFailReasonText")
+                || !runtimeUiSource.Contains("다른 색 샤드를 3번 먹었습니다")
+                || !runtimeUiSource.Contains("FormatMistakeIcons")
+                || !runtimeUiSource.Contains("다른 색 샤드를 3번 먹으면 실패합니다"))
+            {
+                throw new InvalidOperationException("Runtime UI must explain and display the shared wrong-shard three-strike rule.");
+            }
+
+            if (!statsSource.Contains("WrongShardLimitFails") || !statsSource.Contains("LastWrongShardCount") || !statsSource.Contains("ObstacleFails"))
+            {
+                throw new InvalidOperationException("PlaytestStats must separate wrong-shard limit failures, last wrong count, and obstacle failures.");
             }
         }
 
@@ -872,8 +1176,8 @@ namespace ColorGateRush.EditorTools
                 "ToggleSound",
                 "ToggleMusic",
                 "ToggleSfx",
-                "CycleMusicVolume",
-                "CycleSfxVolume",
+                "SetMusicVolume",
+                "SetSfxVolume",
                 "ToggleCameraShake",
                 "ToggleColorAssist",
                 "ResetLocalProgress"
@@ -898,6 +1202,9 @@ namespace ColorGateRush.EditorTools
                 "_sfxSource",
                 "_sfxClipCache",
                 "AudioClip.Create",
+                "Resources.Load<AudioClip>",
+                "ColorgateRush_Menu",
+                "ColorgateRush_Ingame",
                 "GameSettings.MusicEnabled",
                 "GameSettings.SfxEnabled",
                 "GameSettings.MusicVolume",
@@ -915,9 +1222,11 @@ namespace ColorGateRush.EditorTools
             string[] requiredSettingsUiTokens =
             {
                 "MusicToggleButton",
-                "MusicVolumeButton",
+                "MusicVolumeLabel",
+                "MusicVolumeSlider",
                 "SfxToggleButton",
-                "SfxVolumeButton"
+                "SfxVolumeLabel",
+                "SfxVolumeSlider"
             };
 
             foreach (string token in requiredSettingsUiTokens)
@@ -926,6 +1235,11 @@ namespace ColorGateRush.EditorTools
                 {
                     throw new InvalidOperationException("Settings UI missing split audio control: " + token);
                 }
+            }
+
+            if (!File.Exists(MenuBgmAssetPath) || !File.Exists(GameplayBgmAssetPath))
+            {
+                throw new InvalidOperationException("Approved BGM assets are missing from Resources/ColorGateRush/Audio.");
             }
         }
 
@@ -1196,6 +1510,10 @@ namespace ColorGateRush.EditorTools
                 "Resources.Load<Material>",
                 "Resources.GetBuiltinResource<Material>",
                 "CGR_SimpleLitOpaque",
+                "CGR_SimpleLitShard",
+                "CGR_SimpleLitTrack",
+                "CGR_SimpleLitObstacle",
+                "CGR_SimpleLitFinish",
                 "CGR_UnlitTransparent",
                 "CGR_ParticleUnlit",
                 "IsMaterialUsable"
@@ -1307,6 +1625,10 @@ namespace ColorGateRush.EditorTools
             Dictionary<string, string> requiredMaterials = new Dictionary<string, string>
             {
                 { "CGR_SimpleLitOpaque.mat", simpleLitGuid },
+                { "CGR_SimpleLitShard.mat", simpleLitGuid },
+                { "CGR_SimpleLitTrack.mat", simpleLitGuid },
+                { "CGR_SimpleLitObstacle.mat", simpleLitGuid },
+                { "CGR_SimpleLitFinish.mat", simpleLitGuid },
                 { "CGR_UnlitTransparent.mat", unlitGuid },
                 { "CGR_ParticleUnlit.mat", particleUnlitGuid }
             };
@@ -1494,6 +1816,34 @@ namespace ColorGateRush.EditorTools
 
                     generator.ClearGeneratedLevel();
                 }
+
+                EndlessRunConfig endlessConfig = EndlessRunConfig.CreateDefault();
+                LaneRunnerController endlessRunner = generator.BeginEndless(null, endlessConfig, configureScene: true);
+                if (endlessRunner == null)
+                {
+                    throw new InvalidOperationException("Runtime generation smoke failed: Endless runner was not created.");
+                }
+
+                generator.UpdateEndlessGeneration(620f, endlessConfig, 90f);
+                Transform endlessRoot = systems.transform.Find("GeneratedLevel");
+                if (endlessRoot == null)
+                {
+                    throw new InvalidOperationException("Runtime generation smoke failed: Endless GeneratedLevel root was not created.");
+                }
+
+                StageConfig visualReferenceStage = stageManager.GetStageConfig(5);
+                EnsureRunnerPhysics(endlessRunner);
+                EnsureGeneratedCount<CollectibleShard>(endlessRoot, 1);
+                EnsureGeneratedCount<ColorGate>(endlessRoot, 1);
+                EnsureGeneratedCount<ObstacleBlock>(endlessRoot, 1);
+                EnsureGeneratedAbsent<FinishLine>(endlessRoot);
+                EnsureTriggerColliders<CollectibleShard>(endlessRoot);
+                EnsureTriggerColliders<ColorGate>(endlessRoot);
+                EnsureTriggerColliders<ObstacleBlock>(endlessRoot);
+                EnsureGeneratedVisualHealth(endlessRoot, visualReferenceStage);
+                EnsureCameraCanRenderGeneratedObjects(endlessRunner, visualReferenceStage);
+                Debug.Log(BuildEndlessSummary(endlessConfig));
+                generator.ClearGeneratedLevel();
             }
             finally
             {
@@ -1594,6 +1944,16 @@ namespace ColorGateRush.EditorTools
                 Debug.LogWarning("Stage " + stage.StageIndex + " three-star ratio is low: " + ratio.ToString("P0") + ".");
             }
 
+            if (stage.StageIndex == 1 && ratio > 0.97f)
+            {
+                Debug.LogWarning("Stage 1 three-star ratio may be too strict for first-session playtests: " + ratio.ToString("P1") + ".");
+            }
+
+            if ((stage.StageIndex == 10 || stage.StageIndex == 20 || stage.StageIndex == 30) && ratio >= 0.990f)
+            {
+                Debug.LogWarning("Stage " + stage.StageIndex + " three-star target is almost perfect-only: " + ratio.ToString("P1") + ".");
+            }
+
             if (ratio >= 0.995f)
             {
                 Debug.LogWarning("Stage " + stage.StageIndex + " three-star target is extremely strict: " + ratio.ToString("P1") + ".");
@@ -1604,11 +1964,19 @@ namespace ColorGateRush.EditorTools
                 Debug.LogWarning("Stage " + stage.StageIndex + " route-aware max is much lower than naive max: "
                     + report.EstimatedMaxAchievableScore + "/" + report.NaiveMaxScore + ".");
             }
+
+            if (report.TotalRows > 0 && report.RowsWithMultipleMatchingShards > Mathf.CeilToInt(report.TotalRows * 0.20f))
+            {
+                Debug.LogWarning("Stage " + stage.StageIndex + " has many rows with multiple matching shards; playtesters may overestimate collectible score: "
+                    + report.RowsWithMultipleMatchingShards + "/" + report.TotalRows + ".");
+            }
         }
 
         // Builds a compact per-stage balance summary for validator output.
         private static string BuildGenerationSummary(LevelGenerationReport report, StageConfig stage)
         {
+            float rowSpacing = Mathf.Max(20f, stage.TrackLength - 34f) / Mathf.Max(1, stage.ShardRowCount);
+            float reactionTime = rowSpacing / Mathf.Max(0.1f, stage.PlayerForwardSpeed);
             return "Stage " + report.StageIndex
                 + " seed=" + stage.Seed
                 + " tier=" + stage.DifficultyTier
@@ -1616,6 +1984,8 @@ namespace ColorGateRush.EditorTools
                 + " rows=" + report.TotalRows
                 + " trackLength=" + stage.TrackLength.ToString("0")
                 + " speed=" + stage.PlayerForwardSpeed.ToString("0.00")
+                + " rowSpacing=" + rowSpacing.ToString("0.00")
+                + " reaction~" + reactionTime.ToString("0.00") + "s"
                 + " gates=" + report.GateRows
                 + " shardRows=" + report.ShardRows + " (" + report.GetShardRowRatio().ToString("P0") + ")"
                 + " emptyRows=" + report.EmptyRows
@@ -1636,6 +2006,8 @@ namespace ColorGateRush.EditorTools
                 + " twoVsThree=" + (stage.TwoStarScore / (float)Mathf.Max(1, stage.ThreeStarScore)).ToString("P0")
                 + " threeStarRatio=" + (stage.ThreeStarScore / (float)Mathf.Max(1, report.EstimatedMaxAchievableScore)).ToString("P0")
                 + " mistakeAllowance=" + stage.ThreeStarMistakeAllowance
+                + " wrongShardLimit=" + GameConstants.MaxWrongShardCount
+                + " offColorRoute=mistakeState"
                 + " unlock=clear(★>=1)"
                 + " clearRoute=" + report.ClearRouteExists
                 + " nearPerfectRoute=" + report.PerfectOrNearPerfectRouteExists
@@ -1645,6 +2017,24 @@ namespace ColorGateRush.EditorTools
                 + ", allObstacle=" + report.AllObstacleRowsPrevented
                 + ", mixed=" + report.MixedUnsafeRowsPrevented + ")"
                 + " warnings=" + report.Warnings.Count;
+        }
+
+        // Builds a compact Endless Mode readiness summary separate from finite stage balance.
+        private static string BuildEndlessSummary(EndlessRunConfig config)
+        {
+            return "Endless Mode"
+                + " startSpeed=" + config.StartForwardSpeed.ToString("0.00")
+                + " speedGrowth/s=" + config.SpeedGrowthPerSecond.ToString("0.000")
+                + " speed@90s~" + config.ForwardSpeed(90f, 900f).ToString("0.00")
+                + " rowSpacing=" + config.RowSpacingStart.ToString("0.00") + "-" + config.RowSpacingEnd.ToString("0.00")
+                + " reaction~" + (config.RowSpacingStart / Mathf.Max(0.1f, config.StartForwardSpeed)).ToString("0.00") + "s"
+                + " gateInterval=" + config.GateIntervalStart.ToString("0") + "-" + config.GateIntervalEnd.ToString("0")
+                + " obstacleChance=" + config.ObstacleChanceStart.ToString("P1") + "-" + config.ObstacleChanceMax.ToString("P1")
+                + " offColorChance=" + config.OffColorShardChanceStart.ToString("P1") + "-" + config.OffColorShardChanceEnd.ToString("P1")
+                + " wrongShardLimit=" + config.WrongShardLimit
+                + " generateAhead=" + config.GenerateAheadDistance.ToString("0")
+                + " cleanupDistance=" + config.CleanupDistance.ToString("0")
+                + " unlock=none stars=none finish=none";
         }
 
         // Emits warnings for Stage 1 balance drift without failing valid fair generation.
@@ -1704,6 +2094,16 @@ namespace ColorGateRush.EditorTools
             if (count < minimumCount)
             {
                 throw new InvalidOperationException("Runtime generation smoke failed: expected " + typeof(T).Name + " count >= " + minimumCount + ", found " + count + ".");
+            }
+        }
+
+        // Verifies a component type is absent when a mode intentionally omits that gameplay object.
+        private static void EnsureGeneratedAbsent<T>(Transform generatedRoot) where T : Component
+        {
+            int count = generatedRoot.GetComponentsInChildren<T>(true).Length;
+            if (count > 0)
+            {
+                throw new InvalidOperationException("Runtime generation smoke failed: expected no " + typeof(T).Name + " objects, found " + count + ".");
             }
         }
 
@@ -1793,7 +2193,30 @@ namespace ColorGateRush.EditorTools
             }
         }
 
-        // Fails validation if imported texture or audio assets are placed under the game project folder.
+        // Verifies the user-provided main menu background is bundled through Resources and referenced by RuntimeUi.
+        private static void EnsureMainMenuBackgroundReferences()
+        {
+            if (!File.Exists(MainMenuBackgroundAssetPath))
+            {
+                throw new InvalidOperationException("Main menu background image is missing: " + MainMenuBackgroundAssetPath);
+            }
+
+            string runtimeUiPath = "Assets/_Project/Scripts/Runtime/RuntimeUi.cs";
+            if (!File.Exists(runtimeUiPath))
+            {
+                throw new InvalidOperationException("RuntimeUi.cs is missing; main menu background cannot be validated.");
+            }
+
+            string runtimeUiSource = File.ReadAllText(runtimeUiPath);
+            if (!runtimeUiSource.Contains("ColorGateRush/Images/MainMenuBackground")
+                || !runtimeUiSource.Contains("CreateMenuBackground")
+                || !runtimeUiSource.Contains("MainMenuBackgroundReadabilityOverlay"))
+            {
+                throw new InvalidOperationException("RuntimeUi must load the main menu background from Resources and keep a readability overlay.");
+            }
+        }
+
+        // Fails validation if imported media assets outside the approved BGM clips and menu background are placed under the project folder.
         private static void EnsureNoProjectRuntimeAssets()
         {
             string[] textureGuids = AssetDatabase.FindAssets("t:Texture2D", new[] { "Assets/_Project" });
@@ -1801,10 +2224,45 @@ namespace ColorGateRush.EditorTools
             string[] modelGuids = AssetDatabase.FindAssets("t:Model", new[] { "Assets/_Project" });
             string[] fontGuids = AssetDatabase.FindAssets("t:Font", new[] { "Assets/_Project" });
             string[] prefabGuids = AssetDatabase.FindAssets("t:Prefab", new[] { "Assets/_Project" });
-            if (textureGuids.Length > 0 || audioGuids.Length > 0 || modelGuids.Length > 0 || fontGuids.Length > 0 || prefabGuids.Length > 0)
+            List<string> disallowedTexturePaths = new List<string>();
+            List<string> disallowedAudioPaths = new List<string>();
+            foreach (string guid in textureGuids)
             {
-                throw new InvalidOperationException("Imported Texture2D, AudioClip, Model, Font, or Prefab assets found under Assets/_Project. Release assets must be procedural/runtime generated.");
+                string assetPath = AssetDatabase.GUIDToAssetPath(guid).Replace('\\', '/');
+                if (!IsApprovedProjectTextureAsset(assetPath))
+                {
+                    disallowedTexturePaths.Add(assetPath);
+                }
             }
+
+            foreach (string guid in audioGuids)
+            {
+                string assetPath = AssetDatabase.GUIDToAssetPath(guid).Replace('\\', '/');
+                if (!IsApprovedBgmAsset(assetPath))
+                {
+                    disallowedAudioPaths.Add(assetPath);
+                }
+            }
+
+            if (disallowedTexturePaths.Count > 0 || disallowedAudioPaths.Count > 0 || modelGuids.Length > 0 || fontGuids.Length > 0 || prefabGuids.Length > 0)
+            {
+                throw new InvalidOperationException("Imported media found under Assets/_Project. Only the approved BGM clips and main menu background are allowed: "
+                    + MenuBgmAssetPath + ", " + GameplayBgmAssetPath + ", " + MainMenuBackgroundAssetPath
+                    + ". Extra textures: " + string.Join(", ", disallowedTexturePaths)
+                    + ". Extra audio: " + string.Join(", ", disallowedAudioPaths));
+            }
+        }
+
+        // Allows only the user-provided menu background texture that is intentionally bundled through Resources.
+        private static bool IsApprovedProjectTextureAsset(string assetPath)
+        {
+            return assetPath == MainMenuBackgroundAssetPath;
+        }
+
+        // Allows only the two user-provided BGM clips that are intentionally bundled through Resources.
+        private static bool IsApprovedBgmAsset(string assetPath)
+        {
+            return assetPath == MenuBgmAssetPath || assetPath == GameplayBgmAssetPath;
         }
 
         // Fails validation if runtime scripts reference UnityEditor APIs.

@@ -13,7 +13,7 @@ namespace ColorGateRush
         // Returns a cached solid material for a gameplay color.
         public static Material ColorMaterial(ColorId colorId)
         {
-            return SolidMaterial("color_" + colorId + ThemeSuffix(), GameConstants.ToUnityColor(colorId), VisualTheme.Current().ShardGlowAlpha);
+            return SolidMaterial("color_" + colorId + ThemeSuffix(), GameConstants.ToUnityColor(colorId), VisualTheme.Current().ShardGlowAlpha, RuntimeMaterialStyle.Shard);
         }
 
         // Returns a translucent material for the runner's ground accent.
@@ -25,25 +25,32 @@ namespace ColorGateRush
         // Returns the cached dark material used by generated track slabs.
         public static Material TrackMaterial()
         {
-            return SolidMaterial("track" + ThemeSuffix(), VisualTheme.Current().TrackBaseColor);
+            return SolidMaterial("track" + ThemeSuffix(), VisualTheme.Current().TrackBaseColor, 0f, RuntimeMaterialStyle.Track);
         }
 
         // Returns the cached material used by lane guide strips.
         public static Material LaneStripMaterial()
         {
-            return SolidMaterial("lane_strip" + ThemeSuffix(), VisualTheme.Current().TrackAccentColor, 0.12f);
+            return SolidMaterial("lane_strip" + ThemeSuffix(), VisualTheme.Current().TrackAccentColor, 0.10f, RuntimeMaterialStyle.Track);
         }
 
         // Returns the cached material used by raised track side rails.
         public static Material TrackEdgeMaterial()
         {
-            return SolidMaterial("track_edge" + ThemeSuffix(), VisualTheme.Current().TrackEdgeColor);
+            return SolidMaterial("track_edge" + ThemeSuffix(), VisualTheme.Current().TrackEdgeColor, 0.04f, RuntimeMaterialStyle.Track);
         }
 
         // Returns the cached material used by rhythmic track accent stripes.
         public static Material TrackAccentMaterial()
         {
             return TransparentMaterial("track_accent" + ThemeSuffix(), VisualTheme.Current().TrackAccentColor, 0.56f);
+        }
+
+        // Returns a very subtle translucent material for lane surface sheen.
+        public static Material TrackSheenMaterial()
+        {
+            Color color = Color.Lerp(VisualTheme.Current().TrackAccentColor, Color.white, 0.22f);
+            return TransparentMaterial("track_sheen" + ThemeSuffix(), color, 0.18f);
         }
 
         // Returns the cached material used by procedural backdrop panels.
@@ -67,13 +74,13 @@ namespace ColorGateRush
         // Returns the cached material used by obstacle blocks.
         public static Material ObstacleMaterial()
         {
-            return SolidMaterial("obstacle" + ThemeSuffix(), VisualTheme.Current().ObstacleColor, 0.08f);
+            return SolidMaterial("obstacle" + ThemeSuffix(), VisualTheme.Current().ObstacleColor, 0.05f, RuntimeMaterialStyle.Obstacle);
         }
 
         // Returns the cached material used by warning stripes on obstacle geometry.
         public static Material ObstacleWarningMaterial()
         {
-            return SolidMaterial("obstacle_warning" + ThemeSuffix(), VisualTheme.Current().ObstacleWarningColor, 0.18f);
+            return SolidMaterial("obstacle_warning" + ThemeSuffix(), VisualTheme.Current().ObstacleWarningColor, 0.18f, RuntimeMaterialStyle.Obstacle);
         }
 
         // Returns the cached translucent material used by positive gate panels.
@@ -86,13 +93,13 @@ namespace ColorGateRush
         // Returns the cached material used by finish-line geometry.
         public static Material FinishMaterial()
         {
-            return SolidMaterial("finish" + ThemeSuffix(), VisualTheme.Current().FinishColor, 0.16f);
+            return SolidMaterial("finish" + ThemeSuffix(), VisualTheme.Current().FinishColor, 0.22f, RuntimeMaterialStyle.Finish);
         }
 
         // Returns the cached material used by dark finish checker tiles.
         public static Material FinishDarkMaterial()
         {
-            return SolidMaterial("finish_dark" + ThemeSuffix(), VisualTheme.Current().TrackEdgeColor);
+            return SolidMaterial("finish_dark" + ThemeSuffix(), VisualTheme.Current().TrackEdgeColor, 0.02f, RuntimeMaterialStyle.Track);
         }
 
         // Returns the cached material used by runtime ParticleSystem feedback.
@@ -112,12 +119,18 @@ namespace ColorGateRush
         // Creates or returns a cached opaque material with shader fallback support.
         public static Material SolidMaterial(string key, Color color, float emissionStrength = 0f)
         {
+            return SolidMaterial(key, color, emissionStrength, RuntimeMaterialStyle.DefaultOpaque);
+        }
+
+        // Creates or returns a cached opaque material using a specific visual style preset.
+        public static Material SolidMaterial(string key, Color color, float emissionStrength, RuntimeMaterialStyle style)
+        {
             if (MaterialCache.TryGetValue(key, out Material cached))
             {
                 return cached;
             }
 
-            Material material = RuntimeMaterialProvider.CreateOpaque("M_" + key, color, emissionStrength);
+            Material material = RuntimeMaterialProvider.CreateOpaque("M_" + key, color, emissionStrength, style);
             MaterialCache[key] = material;
             return material;
         }
@@ -734,33 +747,34 @@ namespace ColorGateRush
         // Emits the short burst used for successful shard collection.
         public static void CollectBurst(Vector3 position, Color color)
         {
-            Burst(position, color, ScaledParticleCount(18), 0.16f, 0.35f);
-            RingBurst(position + Vector3.up * 0.08f, color, ScaledParticleCount(10), 0.08f, 0.28f, 0.38f);
-            Burst(position + Vector3.up * 0.32f, Color.white, ScaledParticleCount(6), 0.055f, 0.22f);
+            Burst(position, color, ScaledParticleCount(20), 0.15f, 0.34f);
+            RingBurst(position + Vector3.up * 0.08f, color, ScaledParticleCount(12), 0.075f, 0.30f, 0.42f);
+            Burst(position + Vector3.up * 0.34f, Color.white, ScaledParticleCount(8), 0.05f, 0.20f);
         }
 
         // Emits a vertical ring-like burst used when the runner crosses a color gate.
         public static void GateBurst(Vector3 position, Color color)
         {
-            RingBurst(position, color, ScaledParticleCount(30), 0.18f, 0.45f, 0.82f);
-            Burst(position + Vector3.up * 0.2f, color, ScaledParticleCount(12), 0.10f, 0.32f);
-            RingBurst(position + Vector3.up * 0.38f, Color.white, ScaledParticleCount(8), 0.055f, 0.24f, 0.46f);
+            RingBurst(position, color, ScaledParticleCount(32), 0.16f, 0.46f, 0.88f);
+            Burst(position + Vector3.up * 0.22f, color, ScaledParticleCount(14), 0.09f, 0.30f);
+            RingBurst(position + Vector3.up * 0.42f, Color.white, ScaledParticleCount(10), 0.05f, 0.24f, 0.52f);
         }
 
         // Emits a larger white and gold burst used when the runner finishes a run.
         public static void FinishBurst(Vector3 position)
         {
-            Burst(position, VisualTheme.Current().FinishColor, ScaledParticleCount(42), 0.28f, 0.65f);
-            RingBurst(position + Vector3.up * 0.15f, GameConstants.ToUnityColor(ColorId.Yellow), ScaledParticleCount(46), 0.22f, 0.7f, 1.1f);
-            Burst(position + Vector3.up * 0.55f, Color.white, ScaledParticleCount(22), 0.13f, 0.48f);
+            Burst(position, VisualTheme.Current().FinishColor, ScaledParticleCount(44), 0.25f, 0.62f);
+            RingBurst(position + Vector3.up * 0.16f, GameConstants.ToUnityColor(ColorId.Yellow), ScaledParticleCount(48), 0.20f, 0.68f, 1.15f);
+            RingBurst(position + Vector3.up * 0.46f, Color.white, ScaledParticleCount(18), 0.08f, 0.36f, 0.72f);
+            Burst(position + Vector3.up * 0.62f, Color.white, ScaledParticleCount(18), 0.11f, 0.44f);
         }
 
         // Emits the red burst used for wrong shards and obstacle failures.
         public static void FailBurst(Vector3 position)
         {
-            Burst(position, VisualTheme.Current().ObstacleColor, ScaledParticleCount(34), 0.24f, 0.45f);
-            RingBurst(position, VisualTheme.Current().ObstacleWarningColor, ScaledParticleCount(16), 0.12f, 0.32f, 0.55f);
-            RingBurst(position + Vector3.up * 0.12f, Color.white, ScaledParticleCount(6), 0.05f, 0.20f, 0.36f);
+            Burst(position, VisualTheme.Current().ObstacleColor, ScaledParticleCount(32), 0.22f, 0.42f);
+            RingBurst(position, VisualTheme.Current().ObstacleWarningColor, ScaledParticleCount(18), 0.11f, 0.30f, 0.60f);
+            RingBurst(position + Vector3.up * 0.14f, Color.white, ScaledParticleCount(8), 0.045f, 0.18f, 0.40f);
         }
 
         // Emits a spherical one-shot particle burst at the requested world position.

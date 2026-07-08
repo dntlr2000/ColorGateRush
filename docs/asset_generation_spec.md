@@ -2,7 +2,7 @@
 
 ## Hard rule
 
-No external art, audio, font, model, prefab, video, or paid/free Asset Store package is required for the MVP.
+No downloaded art, font, model, prefab, video, or paid/free Asset Store package is required for the MVP. The current allowlist contains two user-provided BGM clips and one user-provided main menu background image bundled through `Resources`.
 
 ## Geometry
 
@@ -14,23 +14,31 @@ No external art, audio, font, model, prefab, video, or paid/free Asset Store pac
 | Gate | Cubes | Full-width transparent trigger, arch frame, shape marker, cue strips |
 | Obstacle | Cube + visual details | Trigger collider plus non-colliding warning stripes/spikes |
 | Track | Cube segments | Slabs plus visual-only rails, separators, edge glow, rhythm stripes |
-| Background | Cubes | Backdrop panels and side glow panels |
+| Background | Cubes | Minimal side glow panels and horizon accents; no large backdrop wall panels |
+| Main menu background | Approved user-provided PNG | `Assets/_Project/Resources/ColorGateRush/Images/MainMenuBackground.png`; used only behind Main Menu UI |
 | Finish | Cube trigger + arch/checkers | Clear endpoint with primitive checker strip |
 | Player accent | Color-specific primitive shape | Non-colliding current color/shape accent near the player |
+| Endless chunks | Cube segments + row objects | Rolling generation ahead of the player; old chunks are cleaned behind the player |
 
 ## Materials
 
 Use code-created material instances cloned from project-owned base materials through `RuntimeMaterialProvider`:
 
 1. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_SimpleLitOpaque.mat`
-2. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_UnlitTransparent.mat`
-3. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_ParticleUnlit.mat`
+2. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_SimpleLitShard.mat`
+3. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_SimpleLitTrack.mat`
+4. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_SimpleLitObstacle.mat`
+5. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_SimpleLitFinish.mat`
+6. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_UnlitTransparent.mat`
+7. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_ParticleUnlit.mat`
 
 These material assets reference only limited URP shader variants:
 
 - `Universal Render Pipeline/Simple Lit` for opaque procedural world geometry that should receive lighting and shadows.
 - `Universal Render Pipeline/Unlit` for transparent panels and low-risk fallback geometry.
 - `Universal Render Pipeline/Particles/Unlit` for ParticleSystem feedback.
+
+Opaque material presets are split by use: shard/player materials are glossier, track materials are calmer and lower smoothness, obstacle materials are heavier and more matte, and finish materials are brighter with a small warm emission.
 
 Palette:
 
@@ -46,7 +54,7 @@ Palette:
 
 Required URP shaders are included through Resources material asset references, not by adding full URP shaders to Graphics Settings Always Included Shaders. `Universal Render Pipeline/Lit` must not be added to Always Included Shaders because it can generate too many Android shader variants. Runtime gameplay code should not scatter direct shader lookup calls outside `RuntimeMaterialProvider`; provider fallback lookup exists only for diagnostics when the Resources material assets are missing.
 
-Opaque generated renderers explicitly cast and receive shadows. Transparent panels, glows, and particles do not cast shadows.
+Opaque generated renderers explicitly cast and receive shadows. Transparent panels, glows, and particles do not cast shadows. Track polish adds visual-only lane sheen strips and accent geometry; these must never add gameplay collision.
 
 If a later polish pass needs manual shader variant control, use a ShaderVariantCollection containing only the exact variants used by the game. Do not include the entire URP/Lit shader.
 
@@ -89,18 +97,25 @@ Use short lifetime and low particle counts for mobile.
 
 ## Audio
 
-Use runtime-generated clips:
+Use approved BGM clips plus runtime-generated feedback audio:
 
 - Collect: short high sine tone.
 - Gate: rising tone.
 - Fail: low buzz/noise-like tone.
 - Finish: simple arpeggio.
-- Menu BGM: gentle short loop generated in code.
-- Gameplay BGM: stage-tier loop generated in code with small tempo/pitch variation.
+- Menu BGM: `Assets/_Project/Resources/ColorGateRush/Audio/ColorgateRush_Menu.mp3`.
+- Gameplay/Endless BGM: `Assets/_Project/Resources/ColorGateRush/Audio/ColorgateRush_Ingame.mp3`.
 - Completed/Failed stings: short non-looped generated clips.
 
-Implementation target: `AudioClip.Create` with envelopes and simple oscillators. No `.wav`, `.mp3`, `.ogg`, or imported audio.
-Music and SFX playback are controlled independently by `CGR_MusicEnabled`, `CGR_SfxEnabled`, `CGR_MusicVolume`, and `CGR_SfxVolume`. The legacy `CGR_SoundEnabled` key is retained only for compatibility.
+Implementation target: approved BGM clips are loaded through `Resources.Load<AudioClip>`, while SFX, stings, and fallback music loops use `AudioClip.Create` with envelopes and simple oscillators. No additional `.wav`, `.mp3`, `.ogg`, or imported audio is allowed without an explicit asset/license update.
+Music and SFX playback are controlled independently by `CGR_MusicEnabled`, `CGR_SfxEnabled`, `CGR_MusicVolume`, and `CGR_SfxVolume`. The Settings UI uses draggable sliders for fine Music/SFX volume control. The legacy `CGR_SoundEnabled` key is retained only for compatibility.
+
+Current approved imported audio list:
+
+- `Assets/_Project/Resources/ColorGateRush/Audio/ColorgateRush_Menu.mp3`
+- `Assets/_Project/Resources/ColorGateRush/Audio/ColorgateRush_Ingame.mp3`
+
+Current SFX remain procedural. Future replacement SFX or additional music should be handled in a separate asset/license pass.
 
 ## UI
 
@@ -110,12 +125,15 @@ Generate a Canvas and basic text at runtime:
 - Combo
 - Current color
 - Current color and shape label
+- Stage and Endless wrong-shard chances shown with generated uGUI text glyph icons, plus Endless score, distance, best score, best distance, and speed multiplier
+- Quit button on Main Menu with safe Editor/WebGL behavior
 - Stage number and `★1/★2/★3` targets during play
 - Score remaining to the 3-star target during play
 - Top-left HUD contrast panel with text shadow
 - Theme-driven menu/pause/result panels and accent buttons
 - Pause button anchored to the screen top-right
-- Settings screen for Music, Music Volume, SFX, SFX Volume, Camera Shake, Color Assist, and guarded Reset Progress
+- Settings screen for Music, draggable Music Volume, SFX, draggable SFX Volume, Camera Shake, Color Assist, and guarded Reset Progress
+- Local-only Playtest Stats screen with guarded Reset Playtest Stats
 - Stage 1 first-run tutorial panel
 - State/result message
 - Short stage-start toast that auto-hides after a few seconds and does not change game state
@@ -126,7 +144,7 @@ Use built-in uGUI for MVP.
 
 Result screens remain open until explicit player input through Retry, Stage Select, Main Menu, or Next Stage buttons. They do not use timer-based or global tap restart. Gameplay does not keep persistent center guide text; detailed rules live in Rules and compact star/score data remains in the HUD.
 
-Release validation treats imported Texture2D, AudioClip, Model, Font, and Prefab assets under `Assets/_Project` as hard failures. All HUD/menu/result UI is generated at runtime.
+Release validation treats imported Texture2D, Model, Font, Prefab, and unapproved AudioClip assets under `Assets/_Project` as hard failures. The only approved imported Texture2D asset is `Assets/_Project/Resources/ColorGateRush/Images/MainMenuBackground.png`, and the only approved imported AudioClip assets are the menu/gameplay BGM files listed above. HUD/menu/result UI is still generated at runtime.
 
 ## Accessibility
 
@@ -170,7 +188,7 @@ Fair generation rules:
 - validator reports route-aware max score, star targets, three-star ratio, mistake allowance, and theme index for Stage 1-30;
 - `Tools/Color Gate Rush/Generate Balance Report` prints naive max, route-aware max, target scores, density, and warning data for Stage 1-30;
 - validator smoke tests generate all 30 MVP content stages without saving imported art/audio/model/font/prefab assets;
-- visual polish validation checks `VisualTheme`, generated backdrop/track roots, visual-only obstacle/gate/finish details, HUD contrast, and legacy symbol removal.
+- visual polish validation checks `VisualTheme`, generated background/track roots, visual-only obstacle/gate/finish details, HUD contrast, and legacy symbol removal.
 
 Star target data:
 
@@ -178,6 +196,6 @@ Star target data:
 - Any clear with at least 1 star unlocks the next stage.
 - 2-star targets are the rounded-up two-thirds point of the 3-star target.
 - 3-star targets are based on a strict percentage of route-aware estimated max score, roughly 93-98% by tier.
-- `StageScoreAnalyzer` evaluates row/lane choices, combo scoring, off-color penalties, gate score, and row-spacing-based lane reach.
-- One generated row is one decision; multiple matching shards in the same row still count as at most one collectible in route-aware max score.
+- `StageScoreAnalyzer` evaluates row/lane choices, combo scoring, gate score, row-spacing-based lane reach, and wrong-shard count state for Stage Mode.
+- One generated row is one decision; multiple matching shards in the same row still count as at most one collectible in route-aware max score. Route-aware analysis tracks wrong-shard count and only invalidates routes that reach the third wrong shard.
 - Balance report compares naive count-only max score with route-aware max score to catch impossible or overly strict 3-star targets.

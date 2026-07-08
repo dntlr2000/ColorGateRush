@@ -121,7 +121,7 @@ namespace ColorGateRush
             return count;
         }
 
-        // Counts lanes that do not immediately fail or penalize the player.
+        // Counts lanes that do not fail, penalize, or consume wrong-shard chances.
         private static int CountSafeOptions(
             GeneratedLaneContent lane0,
             GeneratedLaneContent lane1,

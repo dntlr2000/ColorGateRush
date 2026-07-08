@@ -108,8 +108,14 @@ namespace ColorGateRush
         // Creates an unsaved failed result so failures never reduce best stars.
         public StageResult CreateFailedResult(StageConfig stage, int score)
         {
+            return CreateFailedResult(stage, score, StageFailReason.ObstacleHit);
+        }
+
+        // Creates an unsaved failed result with the reason shown on the result screen.
+        public StageResult CreateFailedResult(StageConfig stage, int score, StageFailReason failReason)
+        {
             int previousBest = GetBestStars(stage.StageIndex);
-            return new StageResult(stage.StageIndex, score, 0, previousBest, previousBest, false, false, stage.StageIndex < TotalStageCount);
+            return new StageResult(stage.StageIndex, score, 0, previousBest, previousBest, false, false, stage.StageIndex < TotalStageCount, failReason);
         }
 
         // Reports whether a star result is eligible to unlock the next stage.
@@ -158,15 +164,15 @@ namespace ColorGateRush
             {
                 int stage = i + 1;
                 int shardRows = 22 + stage * 2;
-                float trackLength = 156f + stage * 7f;
+                float trackLength = 176f + stage * 9.2f;
                 float obstacleChance = GetObstacleLaneChance(stage);
                 float matchingShardChance = GetMatchingShardLaneChance(stage);
                 float offColorShardChance = GetOffColorShardLaneChance(stage);
                 float safeEmptyLaneChance = GetSafeEmptyLaneChance(stage);
                 float gateInterval = GetGateInterval(stage);
                 int colorCount = stage <= 5 ? 3 : 4;
-                float speed = Mathf.Min(GameConstants.MaxForwardSpeed, 7.45f + (stage - 1) * 0.13f);
-                float laneMove = 10.6f + (stage - 1) * 0.10f;
+                float speed = Mathf.Min(GameConstants.MaxForwardSpeed, 8.55f + (stage - 1) * 0.19f);
+                float laneMove = 12.2f + (stage - 1) * 0.13f;
                 int seed = 12345 + stage * 137;
                 int tier = StageScoreAnalyzer.GetDifficultyTier(stage);
                 int themeIndex = (stage - 1) % VisualTheme.ThemeVariationCount;
@@ -327,23 +333,23 @@ namespace ColorGateRush
             switch (stage)
             {
                 case 1:
-                    return 62f;
+                    return 70f;
                 case 2:
-                    return 58f;
+                    return 66f;
                 case 3:
-                    return 54f;
+                    return 62f;
                 default:
                     if (stage <= 10)
                     {
-                        return Mathf.Max(40f, 52f - (stage - 4) * 2.0f);
+                        return Mathf.Max(48f, 60f - (stage - 4) * 2.0f);
                     }
 
                     if (stage <= 20)
                     {
-                        return Mathf.Max(31f, 38f - (stage - 11) * 0.8f);
+                        return Mathf.Max(38f, 46f - (stage - 11) * 0.9f);
                     }
 
-                    return 30f;
+                    return 36f;
             }
         }
     }

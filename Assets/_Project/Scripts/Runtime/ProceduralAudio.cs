@@ -15,12 +15,18 @@ namespace ColorGateRush
     public sealed class ProceduralAudio : MonoBehaviour
     {
         private const int SampleRate = 44100;
+        private const string MenuMusicResourcePath = "ColorGateRush/Audio/ColorgateRush_Menu";
+        private const string GameplayMusicResourcePath = "ColorGateRush/Audio/ColorgateRush_Ingame";
         private AudioSource _sfxSource;
         private AudioSource _musicSource;
         private MusicType _currentMusicType = MusicType.Menu;
         private int _currentMusicTier = -1;
         private bool _musicDucked;
         private AudioClip _menuMusicClip;
+        private AudioClip _importedMenuMusicClip;
+        private AudioClip _importedGameplayMusicClip;
+        private bool _importedMenuMusicLoadAttempted;
+        private bool _importedGameplayMusicLoadAttempted;
         private readonly AudioClip[] _gameplayMusicClips = new AudioClip[4];
         private readonly Dictionary<string, AudioClip> _sfxClipCache = new Dictionary<string, AudioClip>();
 
@@ -42,7 +48,7 @@ namespace ColorGateRush
             RefreshSettings();
         }
 
-        // Stops procedural music if the systems object is disabled.
+        // Stops active BGM if the systems object is disabled.
         private void OnDisable()
         {
             StopMusic();
@@ -308,6 +314,12 @@ namespace ColorGateRush
         // Returns a cached gentle menu loop.
         private AudioClip GetMenuMusicClip()
         {
+            AudioClip importedClip = GetImportedMusicClip(MenuMusicResourcePath, ref _importedMenuMusicClip, ref _importedMenuMusicLoadAttempted);
+            if (importedClip != null)
+            {
+                return importedClip;
+            }
+
             if (_menuMusicClip == null)
             {
                 _menuMusicClip = BuildMusicLoop("cgr_menu_loop", 88f, 220f, true);
@@ -319,6 +331,12 @@ namespace ColorGateRush
         // Returns a cached gameplay loop for the requested stage tier.
         private AudioClip GetGameplayMusicClip(int tier)
         {
+            AudioClip importedClip = GetImportedMusicClip(GameplayMusicResourcePath, ref _importedGameplayMusicClip, ref _importedGameplayMusicLoadAttempted);
+            if (importedClip != null)
+            {
+                return importedClip;
+            }
+
             int index = Mathf.Clamp(tier - 1, 0, _gameplayMusicClips.Length - 1);
             if (_gameplayMusicClips[index] == null)
             {
@@ -328,6 +346,24 @@ namespace ColorGateRush
             }
 
             return _gameplayMusicClips[index];
+        }
+
+        // Loads a user-provided BGM AudioClip from Resources once, falling back to procedural loops if missing.
+        private static AudioClip GetImportedMusicClip(string resourcePath, ref AudioClip cachedClip, ref bool loadAttempted)
+        {
+            if (!loadAttempted)
+            {
+                cachedClip = Resources.Load<AudioClip>(resourcePath);
+                loadAttempted = true;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                if (cachedClip == null)
+                {
+                    Debug.LogWarning("Imported BGM clip missing at Resources/" + resourcePath + ". Falling back to procedural BGM.");
+                }
+#endif
+            }
+
+            return cachedClip;
         }
 
         // Synthesizes a short seamless-ish loop from simple sine-wave bass, pad, and pluck layers.

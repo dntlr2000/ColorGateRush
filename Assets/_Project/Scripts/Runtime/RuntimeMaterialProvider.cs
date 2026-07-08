@@ -3,21 +3,40 @@ using UnityEngine;
 
 namespace ColorGateRush
 {
+    public enum RuntimeMaterialStyle
+    {
+        DefaultOpaque,
+        Shard,
+        Track,
+        Obstacle,
+        Finish
+    }
+
     public static class RuntimeMaterialProvider
     {
         private const string MaterialRoot = "ColorGateRush/Materials/";
         private const string OpaqueBaseMaterialPath = MaterialRoot + "CGR_SimpleLitOpaque";
+        private const string ShardBaseMaterialPath = MaterialRoot + "CGR_SimpleLitShard";
+        private const string TrackBaseMaterialPath = MaterialRoot + "CGR_SimpleLitTrack";
+        private const string ObstacleBaseMaterialPath = MaterialRoot + "CGR_SimpleLitObstacle";
+        private const string FinishBaseMaterialPath = MaterialRoot + "CGR_SimpleLitFinish";
         private const string TransparentBaseMaterialPath = MaterialRoot + "CGR_UnlitTransparent";
         private const string ParticleBaseMaterialPath = MaterialRoot + "CGR_ParticleUnlit";
 
-        private static Material _opaqueBaseMaterial;
+        private static readonly System.Collections.Generic.Dictionary<RuntimeMaterialStyle, Material> OpaqueBaseMaterials = new System.Collections.Generic.Dictionary<RuntimeMaterialStyle, Material>();
         private static Material _transparentBaseMaterial;
         private static Material _particleBaseMaterial;
 
         // Creates an opaque runtime material from the project shader provider.
         public static Material CreateOpaque(string name, Color color, float emissionStrength)
         {
-            Material material = CreateMaterialFromBase(name, GetOpaqueBaseMaterial(), "Universal Render Pipeline/Simple Lit", "Universal Render Pipeline/Unlit", "Sprites/Default", "UI/Default");
+            return CreateOpaque(name, color, emissionStrength, RuntimeMaterialStyle.DefaultOpaque);
+        }
+
+        // Creates an opaque runtime material from a specific project style preset.
+        public static Material CreateOpaque(string name, Color color, float emissionStrength, RuntimeMaterialStyle style)
+        {
+            Material material = CreateMaterialFromBase(name, GetOpaqueBaseMaterial(style), "Universal Render Pipeline/Simple Lit", "Universal Render Pipeline/Unlit", "Sprites/Default", "UI/Default");
             SetMaterialColor(material, color);
             ConfigureLitSurface(material, color, emissionStrength);
             ValidateMaterial(material, name);
@@ -53,14 +72,33 @@ namespace ColorGateRush
         }
 
         // Loads the build-included opaque base material from Resources.
-        private static Material GetOpaqueBaseMaterial()
+        private static Material GetOpaqueBaseMaterial(RuntimeMaterialStyle style)
         {
-            if (!IsMaterialUsable(_opaqueBaseMaterial))
+            if (!OpaqueBaseMaterials.TryGetValue(style, out Material material) || !IsMaterialUsable(material))
             {
-                _opaqueBaseMaterial = LoadBaseMaterial(OpaqueBaseMaterialPath);
+                material = LoadBaseMaterial(GetOpaqueBaseMaterialPath(style));
+                OpaqueBaseMaterials[style] = material;
             }
 
-            return _opaqueBaseMaterial;
+            return material;
+        }
+
+        // Returns the Resources path for an opaque material style preset.
+        private static string GetOpaqueBaseMaterialPath(RuntimeMaterialStyle style)
+        {
+            switch (style)
+            {
+                case RuntimeMaterialStyle.Shard:
+                    return ShardBaseMaterialPath;
+                case RuntimeMaterialStyle.Track:
+                    return TrackBaseMaterialPath;
+                case RuntimeMaterialStyle.Obstacle:
+                    return ObstacleBaseMaterialPath;
+                case RuntimeMaterialStyle.Finish:
+                    return FinishBaseMaterialPath;
+                default:
+                    return OpaqueBaseMaterialPath;
+            }
         }
 
         // Loads the build-included transparent base material from Resources.
@@ -177,7 +215,11 @@ namespace ColorGateRush
 
             if (material.HasProperty("_Smoothness"))
             {
-                material.SetFloat("_Smoothness", 0.68f);
+                float currentSmoothness = material.GetFloat("_Smoothness");
+                if (currentSmoothness <= 0f)
+                {
+                    material.SetFloat("_Smoothness", 0.55f);
+                }
             }
 
             if (material.HasProperty("_Metallic"))
