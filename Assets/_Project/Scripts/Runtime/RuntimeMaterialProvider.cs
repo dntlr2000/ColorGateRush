@@ -20,10 +20,12 @@ namespace ColorGateRush
         private const string TrackBaseMaterialPath = MaterialRoot + "CGR_SimpleLitTrack";
         private const string ObstacleBaseMaterialPath = MaterialRoot + "CGR_SimpleLitObstacle";
         private const string FinishBaseMaterialPath = MaterialRoot + "CGR_SimpleLitFinish";
+        private const string UnlitOpaqueBaseMaterialPath = MaterialRoot + "CGR_UnlitOpaque";
         private const string TransparentBaseMaterialPath = MaterialRoot + "CGR_UnlitTransparent";
         private const string ParticleBaseMaterialPath = MaterialRoot + "CGR_ParticleUnlit";
 
         private static readonly System.Collections.Generic.Dictionary<RuntimeMaterialStyle, Material> OpaqueBaseMaterials = new System.Collections.Generic.Dictionary<RuntimeMaterialStyle, Material>();
+        private static Material _unlitOpaqueBaseMaterial;
         private static Material _transparentBaseMaterial;
         private static Material _particleBaseMaterial;
 
@@ -45,6 +47,28 @@ namespace ColorGateRush
 
         // Creates a transparent runtime material from the project shader provider.
         public static Material CreateTransparent(string name, Color color, float alpha)
+        {
+            Color transparent = color;
+            transparent.a = Mathf.Clamp01(alpha);
+            Material material = CreateMaterialFromBase(name, GetTransparentBaseMaterial(), "Universal Render Pipeline/Unlit", "Sprites/Default", "UI/Default");
+            SetMaterialColor(material, transparent);
+            ConfigureTransparency(material);
+            ValidateMaterial(material, name);
+            return material;
+        }
+
+        // Creates the runner body material from a build-included unlit asset so player validation never depends on shard materials.
+        public static Material CreatePlayerBody(string name, Color color, float emissionStrength)
+        {
+            Material material = CreateMaterialFromBase(name, GetUnlitOpaqueBaseMaterial(), "Universal Render Pipeline/Unlit", "Sprites/Default", "UI/Default");
+            SetMaterialColor(material, color);
+            ConfigureLitSurface(material, color, emissionStrength);
+            ValidateMaterial(material, name);
+            return material;
+        }
+
+        // Creates the runner accent material from the transparent Resources asset used by runtime player indicators.
+        public static Material CreatePlayerAccent(string name, Color color, float alpha)
         {
             Color transparent = color;
             transparent.a = Mathf.Clamp01(alpha);
@@ -81,6 +105,17 @@ namespace ColorGateRush
             }
 
             return material;
+        }
+
+        // Loads the build-included unlit opaque material used for player-safe body rendering.
+        private static Material GetUnlitOpaqueBaseMaterial()
+        {
+            if (!IsMaterialUsable(_unlitOpaqueBaseMaterial))
+            {
+                _unlitOpaqueBaseMaterial = LoadBaseMaterial(UnlitOpaqueBaseMaterialPath);
+            }
+
+            return _unlitOpaqueBaseMaterial;
         }
 
         // Returns the Resources path for an opaque material style preset.

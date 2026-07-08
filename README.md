@@ -69,6 +69,7 @@ Runtime mesh objects are created with explicit `GameObject` + `MeshFilter` + `Me
 - `RuntimeMaterialProvider` centralizes URP-compatible shader/material creation for generated objects.
 - Runtime base materials live under `Assets/_Project/Resources/ColorGateRush/Materials`, so Android/WebGL/PC builds include the limited shader variants actually used by generated objects.
 - Opaque generated meshes use `Universal Render Pipeline/Simple Lit` through small Resources material presets such as `CGR_SimpleLitShard`, `CGR_SimpleLitTrack`, `CGR_SimpleLitObstacle`, and `CGR_SimpleLitFinish` to keep lighting and shadows without pulling in full URP/Lit variants.
+- The player body and color accent use `RuntimeMaterialProvider` player-specific materials based on `CGR_UnlitOpaque` and `CGR_UnlitTransparent`, so player color swaps cannot fall back to null or unsupported shard materials.
 - Transparent panels and ParticleSystem feedback stay on limited `URP/Unlit` materials for build safety.
 - `Universal Render Pipeline/Lit` is not placed in Graphics Settings Always Included Shaders because its variant count can break Android builds.
 - 30 stages cycle through five procedural theme variations without external textures or skyboxes.
@@ -144,7 +145,7 @@ Stage and Endless QA should verify the HUD shows three wrong-shard chance icons,
 
 Only the two approved user-provided BGM files under `Assets/_Project/Resources/ColorGateRush/Audio` and the approved main menu background image under `Assets/_Project/Resources/ColorGateRush/Images` are allowed as imported media. SFX remain procedural.
 
-If Android shows pink materials, run `Validate Runtime Visuals`, confirm `Universal Render Pipeline/Lit` is absent from Always Included Shaders, and confirm the Resources material assets exist under `Assets/_Project/Resources/ColorGateRush/Materials`. If visual depth looks flat, confirm opaque meshes are using the `CGR_SimpleLit*` presets and renderer shadow casting/receiving is enabled. If a PC build hides generated objects, use a Development Build and check the runtime visual self-check log for renderer, mesh, material, collider, camera culling mask, and far clip counts.
+If Android shows pink materials, run `Validate Runtime Visuals`, confirm `Universal Render Pipeline/Lit` is absent from Always Included Shaders, and confirm the Resources material assets exist under `Assets/_Project/Resources/ColorGateRush/Materials`. If the validator reports a null or unsupported material, use the object path, renderer type, slot, material name, and shader name in the error to find the exact generated object; player body/accent renderers must use the player material provider path. If visual depth looks flat, confirm opaque meshes are using the `CGR_SimpleLit*` presets and renderer shadow casting/receiving is enabled. If a PC build hides generated objects, use a Development Build and check the runtime visual self-check log for renderer, mesh, material, collider, camera culling mask, and far clip counts.
 
 For Android/WebGL packaging preparation, follow `docs/release_readiness_checklist.md`. It covers Validate Build, Balance Report, Release Readiness Report, APK/AAB usage, keystore safety, WebGL browser checks, and device smoke tests.
 

@@ -29,8 +29,9 @@ Use code-created material instances cloned from project-owned base materials thr
 3. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_SimpleLitTrack.mat`
 4. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_SimpleLitObstacle.mat`
 5. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_SimpleLitFinish.mat`
-6. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_UnlitTransparent.mat`
-7. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_ParticleUnlit.mat`
+6. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_UnlitOpaque.mat`
+7. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_UnlitTransparent.mat`
+8. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_ParticleUnlit.mat`
 
 These material assets reference only limited URP shader variants:
 
@@ -38,7 +39,7 @@ These material assets reference only limited URP shader variants:
 - `Universal Render Pipeline/Unlit` for transparent panels and low-risk fallback geometry.
 - `Universal Render Pipeline/Particles/Unlit` for ParticleSystem feedback.
 
-Opaque material presets are split by use: shard/player materials are glossier, track materials are calmer and lower smoothness, obstacle materials are heavier and more matte, and finish materials are brighter with a small warm emission.
+Opaque material presets are split by use: shard materials are glossier, the player body uses the player-specific `CGR_UnlitOpaque` provider path for build-safe color swaps, track materials are calmer and lower smoothness, obstacle materials are heavier and more matte, and finish materials are brighter with a small warm emission.
 
 Palette:
 
@@ -72,7 +73,7 @@ Transparent gate material:
 - Use `ProceduralFactory.EnsureBoxCollider`, `EnsureSphereCollider`, and `EnsureCapsuleCollider` for collider creation.
 - Visual-only geometry must use `VisualPrimitive`, which disables colliders after creation.
 - Gameplay triggers must keep explicit trigger colliders.
-- Generated objects must have active renderers, non-null meshes, supported materials, and non-zero scale.
+- Generated objects must have active renderers, non-null meshes, supported materials, and non-zero scale. Player body and child/accent renderers are included in this rule and must receive material through `RuntimeMaterialProvider` rather than directly reusing shard materials.
 - Run `Tools/Color Gate Rush/Validate Runtime Visuals` before Android/PC build smoke tests.
 
 ## Particles

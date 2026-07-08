@@ -359,7 +359,7 @@ namespace ColorGateRush
                 _levelRoot,
                 new Vector3(0f, GameConstants.PlayerY, 0f),
                 Vector3.one * 1.1f,
-                ProceduralFactory.ColorMaterial(ColorId.Cyan),
+                ProceduralFactory.PlayerMaterial(ColorId.Cyan),
                 isTrigger: false);
 
             Rigidbody rb = player.AddComponent<Rigidbody>();
@@ -380,7 +380,7 @@ namespace ColorGateRush
                 _levelRoot,
                 new Vector3(0f, GameConstants.PlayerY, 0f),
                 Vector3.one * 1.1f,
-                ProceduralFactory.ColorMaterial(ColorId.Cyan),
+                ProceduralFactory.PlayerMaterial(ColorId.Cyan),
                 isTrigger: false);
 
             Rigidbody rb = player.AddComponent<Rigidbody>();

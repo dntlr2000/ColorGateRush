@@ -1555,8 +1555,11 @@ namespace ColorGateRush.EditorTools
                 "CGR_SimpleLitTrack",
                 "CGR_SimpleLitObstacle",
                 "CGR_SimpleLitFinish",
+                "CGR_UnlitOpaque",
                 "CGR_UnlitTransparent",
                 "CGR_ParticleUnlit",
+                "CreatePlayerBody",
+                "CreatePlayerAccent",
                 "IsMaterialUsable"
             };
 
@@ -1670,6 +1673,7 @@ namespace ColorGateRush.EditorTools
                 { "CGR_SimpleLitTrack.mat", simpleLitGuid },
                 { "CGR_SimpleLitObstacle.mat", simpleLitGuid },
                 { "CGR_SimpleLitFinish.mat", simpleLitGuid },
+                { "CGR_UnlitOpaque.mat", unlitGuid },
                 { "CGR_UnlitTransparent.mat", unlitGuid },
                 { "CGR_ParticleUnlit.mat", particleUnlitGuid }
             };
@@ -2179,11 +2183,7 @@ namespace ColorGateRush.EditorTools
                     throw new InvalidOperationException("Runtime visual smoke failed: disabled or missing renderer in stage " + stage.StageIndex + ".");
                 }
 
-                if (!RuntimeMaterialProvider.IsMaterialUsable(renderer.sharedMaterial))
-                {
-                    string name = renderer != null ? renderer.name : "unknown";
-                    throw new InvalidOperationException("Runtime visual smoke failed: unsupported/null material on " + name + " in stage " + stage.StageIndex + ".");
-                }
+                EnsureRendererMaterialsAreUsable(generatedRoot, renderer, stage.StageIndex);
             }
 
             foreach (MeshFilter meshFilter in meshFilters)
@@ -2191,9 +2191,70 @@ namespace ColorGateRush.EditorTools
                 if (meshFilter == null || meshFilter.sharedMesh == null)
                 {
                     string name = meshFilter != null ? meshFilter.name : "unknown";
-                    throw new InvalidOperationException("Runtime visual smoke failed: missing mesh on " + name + " in stage " + stage.StageIndex + ".");
+                    string objectPath = meshFilter != null ? BuildGeneratedObjectPath(generatedRoot, meshFilter.transform) : "unknown";
+                    throw new InvalidOperationException("Runtime visual smoke failed: missing mesh on " + objectPath + " (MeshFilter name=" + name + ") in stage " + stage.StageIndex + ".");
                 }
             }
+        }
+
+        // Checks every material slot on a generated renderer and reports the exact object path when one is invalid.
+        private static void EnsureRendererMaterialsAreUsable(Transform generatedRoot, Renderer renderer, int stageIndex)
+        {
+            if (renderer == null)
+            {
+                throw new InvalidOperationException("Runtime visual smoke failed: missing renderer in stage " + stageIndex + ".");
+            }
+
+            Material[] materials = renderer.sharedMaterials;
+            string objectPath = BuildGeneratedObjectPath(generatedRoot, renderer.transform);
+            if (materials == null || materials.Length == 0)
+            {
+                throw new InvalidOperationException("Runtime visual smoke failed: no materials assigned on " + objectPath + " (" + renderer.GetType().Name + ") in stage " + stageIndex + ".");
+            }
+
+            for (int i = 0; i < materials.Length; i++)
+            {
+                Material material = materials[i];
+                if (material == null)
+                {
+                    throw new InvalidOperationException("Runtime visual smoke failed: null material on " + objectPath + " (" + renderer.GetType().Name + "), slot " + i + ", stage " + stageIndex + ".");
+                }
+
+                Shader shader = material.shader;
+                if (shader == null)
+                {
+                    throw new InvalidOperationException("Runtime visual smoke failed: null shader on " + objectPath + " (" + renderer.GetType().Name + "), slot " + i + ", material=" + material.name + ", stage " + stageIndex + ".");
+                }
+
+                if (!shader.isSupported)
+                {
+                    throw new InvalidOperationException("Runtime visual smoke failed: unsupported shader on " + objectPath + " (" + renderer.GetType().Name + "), slot " + i + ", material=" + material.name + ", shader=" + shader.name + ", stage " + stageIndex + ".");
+                }
+            }
+        }
+
+        // Builds a stable path for generated smoke-test objects without depending on scene asset paths.
+        private static string BuildGeneratedObjectPath(Transform root, Transform target)
+        {
+            if (target == null)
+            {
+                return "unknown";
+            }
+
+            Stack<string> names = new Stack<string>();
+            Transform current = target;
+            while (current != null)
+            {
+                names.Push(current.name);
+                if (root != null && current == root)
+                {
+                    break;
+                }
+
+                current = current.parent;
+            }
+
+            return string.Join("/", names.ToArray());
         }
 
         // Verifies the generated camera setup can render the default-layer procedural level.

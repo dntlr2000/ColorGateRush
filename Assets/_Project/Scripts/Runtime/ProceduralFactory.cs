@@ -16,10 +16,34 @@ namespace ColorGateRush
             return SolidMaterial("color_" + colorId + ThemeSuffix(), GameConstants.ToUnityColor(colorId), VisualTheme.Current().ShardGlowAlpha, RuntimeMaterialStyle.Shard);
         }
 
+        // Returns the cached body material used only by the runner so player visuals do not depend on shard material variants.
+        public static Material PlayerMaterial(ColorId colorId)
+        {
+            string key = "player_body_" + colorId + ThemeSuffix();
+            if (MaterialCache.TryGetValue(key, out Material cached))
+            {
+                return cached;
+            }
+
+            Color color = Color.Lerp(GameConstants.ToUnityColor(colorId), Color.white, 0.08f);
+            Material material = RuntimeMaterialProvider.CreatePlayerBody("M_" + key, color, 0.06f);
+            MaterialCache[key] = material;
+            return material;
+        }
+
         // Returns a translucent material for the runner's ground accent.
         public static Material PlayerAccentMaterial(ColorId colorId)
         {
-            return TransparentMaterial("player_accent_" + colorId + ThemeSuffix(), GameConstants.ToUnityColor(colorId), 0.42f);
+            string key = "player_accent_" + colorId + ThemeSuffix();
+            string cacheKey = key + "_alpha_0.42";
+            if (MaterialCache.TryGetValue(cacheKey, out Material cached))
+            {
+                return cached;
+            }
+
+            Material material = RuntimeMaterialProvider.CreatePlayerAccent("M_" + cacheKey, GameConstants.ToUnityColor(colorId), 0.42f);
+            MaterialCache[cacheKey] = material;
+            return material;
         }
 
         // Returns the cached dark material used by generated track slabs.
@@ -367,6 +391,21 @@ namespace ColorGateRush
             if (renderer != null)
             {
                 renderer.sharedMaterial = ColorMaterial(colorId);
+            }
+        }
+
+        // Applies the active player body material through the safe runtime material assignment path.
+        public static void ApplyPlayerMaterial(GameObject target, ColorId colorId)
+        {
+            if (target == null)
+            {
+                return;
+            }
+
+            Renderer renderer = target.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                ApplyMaterial(renderer, PlayerMaterial(colorId), target.name);
             }
         }
 

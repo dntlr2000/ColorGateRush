@@ -85,7 +85,7 @@ namespace ColorGateRush
 
             if (_renderer != null)
             {
-                _renderer.sharedMaterial = ProceduralFactory.ColorMaterial(colorId);
+                ProceduralFactory.ApplyPlayerMaterial(gameObject, colorId);
             }
 
             if (_accentShape != null && previousColor != colorId)

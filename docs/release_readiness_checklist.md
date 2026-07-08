@@ -118,7 +118,8 @@ Hard failures must be fixed before packaging. Warnings identify manual release d
 
 - If pink procedural materials appear, rerun `Validate Runtime Visuals`.
 - Confirm `ProjectSettings/GraphicsSettings.asset` does not include the URP/Lit shader GUID.
-- Confirm `Assets/_Project/Resources/ColorGateRush/Materials` contains `CGR_SimpleLitOpaque`, `CGR_SimpleLitShard`, `CGR_SimpleLitTrack`, `CGR_SimpleLitObstacle`, `CGR_SimpleLitFinish`, `CGR_UnlitTransparent`, and `CGR_ParticleUnlit`.
+- Confirm `Assets/_Project/Resources/ColorGateRush/Materials` contains `CGR_SimpleLitOpaque`, `CGR_SimpleLitShard`, `CGR_SimpleLitTrack`, `CGR_SimpleLitObstacle`, `CGR_SimpleLitFinish`, `CGR_UnlitOpaque`, `CGR_UnlitTransparent`, and `CGR_ParticleUnlit`.
+- If `Validate Runtime Visuals` reports a null or unsupported material, use the reported generated object path, renderer type, material slot, material name, and shader name to identify the exact renderer. Player body/accent renderers should route through `RuntimeMaterialProvider` player material methods.
 - Confirm opaque objects cast/receive shadows while transparent gate/background/VFX objects remain shadow-free.
 - Confirm procedural objects are created through `ProceduralFactory.Primitive` and generic collider helpers.
 - Confirm no source file contains `AddComponent("...")` or `GameObject.CreatePrimitive`.
