@@ -23,12 +23,23 @@ namespace ColorGateRush
         private GameObject _playtestStatsPanel;
         private GameObject _statsResetConfirmPanel;
         private GameObject _hudPanel;
+        private GameObject _messageToastPanel;
+        private GameObject _comboBadgePanel;
         private GameObject _tutorialPanel;
         private GameObject _pausePanel;
         private GameObject _resultPanel;
         private Transform _stageButtonRoot;
         private Text _scoreText;
+        private Text _hudModeText;
+        private Text _hudTargetText;
+        private Text _hudProgressText;
+        private Text _hudMistakeIconsText;
+        private Text _hudCurrentText;
+        private Text _hudComboText;
         private Text _messageText;
+        private Image _hudProgressFill;
+        private Image _hudColorChip;
+        private Text _hudShapeGlyphText;
         private Text _menuNoticeText;
         private Text _debugText;
         private Text _hintText;
@@ -234,12 +245,9 @@ namespace ColorGateRush
         {
             EnsureCanvas();
             ShowMessage(
-                "Stage " + stage.StageIndex
-                + "\n같은 색/모양 샤드만 모으세요"
-                + "\n다른 색 3회 = 실패"
-                + "\n★2: " + stage.TwoStarScore + "  ★3: " + stage.ThreeStarScore
-                + "\n클리어하면 다음 스테이지가 열립니다",
-                2.4f);
+                "같은 색/모양 샤드만 모으세요"
+                + "\n다른 색 3회 = 실패",
+                2.0f);
         }
 
         // Shows a short Endless briefing that disappears automatically and never changes game state.
@@ -247,8 +255,9 @@ namespace ColorGateRush
         {
             EnsureCanvas();
             ShowMessage(
-                "Endless Mode\n점점 빨라집니다\n다른 색 샤드 3회면 기록 종료",
-                2.4f);
+                "점점 빨라지는 기록 도전"
+                + "\n다른 색 3회 = 실패",
+                2.0f);
         }
 
         // Shows the first-run tutorial overlay before Stage 1 begins moving.
@@ -351,8 +360,15 @@ namespace ColorGateRush
             EnsureCanvas();
             ColorVisualProfile profile = GameConstants.GetVisualProfile(color);
             int threeStarRemaining = Mathf.Max(0, _hudThreeStarScore - score);
-            _scoreText.text = $"Stage {_hudStageIndex}\nScore: {score}\n★1: 피니시\n★2: {_hudTwoStarScore}   ★3: {_hudThreeStarScore}\n3성까지: {threeStarRemaining}\n기회: {FormatMistakeIcons(wrongShardCount, wrongShardLimit)}\n현재: {profile.HudLabel}\nCombo x{Mathf.Max(1, combo)}";
-            _debugText.text = "Seed " + seed;
+            _hudModeText.text = "STAGE " + _hudStageIndex.ToString("00");
+            _scoreText.text = score.ToString();
+            _hudTargetText.text = "Finish   ★2 " + _hudTwoStarScore + "   ★3 " + _hudThreeStarScore;
+            _hudProgressText.text = threeStarRemaining > 0 ? "3★까지 " + threeStarRemaining : "3★ READY";
+            SetHudProgress(_hudProgressFill, score / (float)Mathf.Max(1, _hudThreeStarScore), 346f);
+            _hudMistakeIconsText.text = FormatMistakeIcons(wrongShardCount, wrongShardLimit);
+            SetCurrentVisual(profile);
+            SetComboBadge(combo);
+            _debugText.text = string.Empty;
             _hintText.text = string.Empty;
         }
 
@@ -373,25 +389,27 @@ namespace ColorGateRush
             ColorVisualProfile profile = GameConstants.GetVisualProfile(color);
             int safeWrongLimit = Mathf.Max(1, wrongShardLimit);
             int safeWrongCount = Mathf.Clamp(wrongShardCount, 0, safeWrongLimit);
-            _scoreText.text = "Endless Mode"
-                + "\nScore: " + score
-                + "\nDistance: " + Mathf.FloorToInt(distance) + "m"
-                + "\nBest: " + bestScore + " / " + Mathf.FloorToInt(bestDistance) + "m"
-                + "\n기회: " + FormatMistakeIcons(safeWrongCount, safeWrongLimit)
-                + "\nSpeed x" + Mathf.Max(1f, speedMultiplier).ToString("0.0")
-                + "\n현재: " + profile.HudLabel
-                + "\nCombo x" + Mathf.Max(1, combo);
-            _debugText.text = "Seed " + seed;
+            _hudModeText.text = "ENDLESS";
+            _scoreText.text = score.ToString();
+            _hudTargetText.text = "거리 " + Mathf.FloorToInt(distance) + "m   최고 " + bestScore;
+            _hudProgressText.text = "SPEED x" + Mathf.Max(1f, speedMultiplier).ToString("0.0") + "   BEST " + Mathf.FloorToInt(bestDistance) + "m";
+            SetHudProgress(_hudProgressFill, Mathf.InverseLerp(1f, 3f, Mathf.Max(1f, speedMultiplier)), 346f);
+            _hudMistakeIconsText.text = FormatMistakeIcons(safeWrongCount, safeWrongLimit);
+            SetCurrentVisual(profile);
+            SetComboBadge(combo);
+            _debugText.text = string.Empty;
             _hintText.text = string.Empty;
         }
 
-        // Formats remaining wrong-shard chances as filled and empty HUD glyphs.
+        // Formats remaining wrong-shard chances as bright and dim rich-text HUD glyphs.
         private static string FormatMistakeIcons(int wrongShardCount, int wrongShardLimit)
         {
             int safeLimit = Mathf.Max(1, wrongShardLimit);
             int used = Mathf.Clamp(wrongShardCount, 0, safeLimit);
             int remaining = safeLimit - used;
-            StringBuilder builder = new StringBuilder(safeLimit * 2);
+            string activeColor = "#" + ColorUtility.ToHtmlStringRGB(VisualTheme.Current().HudAccentColor);
+            string inactiveColor = "#4C5668";
+            StringBuilder builder = new StringBuilder(safeLimit * 28);
             for (int i = 0; i < safeLimit; i++)
             {
                 if (i > 0)
@@ -399,10 +417,77 @@ namespace ColorGateRush
                     builder.Append(' ');
                 }
 
-                builder.Append(i < remaining ? '◆' : '◇');
+                builder.Append("<color=");
+                builder.Append(i < remaining ? activeColor : inactiveColor);
+                builder.Append(">◆</color>");
             }
 
             return builder.ToString();
+        }
+
+        // Updates the small current-target color chip and procedural shape glyph.
+        private void SetCurrentVisual(ColorVisualProfile profile)
+        {
+            if (_hudColorChip != null)
+            {
+                _hudColorChip.color = GameConstants.ToUnityColor(profile.ColorId);
+            }
+
+            if (_hudShapeGlyphText != null)
+            {
+                _hudShapeGlyphText.text = ShapeGlyph(profile.ShapeType);
+            }
+
+            if (_hudCurrentText != null)
+            {
+                _hudCurrentText.text = "현재  " + profile.HudLabel;
+            }
+        }
+
+        // Updates the bottom-right combo badge without using the central toast channel.
+        private void SetComboBadge(int combo)
+        {
+            int safeCombo = Mathf.Max(1, combo);
+            if (_hudComboText != null)
+            {
+                _hudComboText.text = "x" + safeCombo;
+                _hudComboText.color = safeCombo > 1
+                    ? new Color(1f, 0.90f, 0.28f, 1f)
+                    : new Color(1f, 1f, 1f, 0.82f);
+            }
+
+            if (_comboBadgePanel != null)
+            {
+                _comboBadgePanel.SetActive(true);
+            }
+        }
+
+        // Resizes the HUD progress fill without allocating or moving gameplay objects.
+        private static void SetHudProgress(Image fill, float normalizedValue, float maxWidth)
+        {
+            if (fill == null)
+            {
+                return;
+            }
+
+            RectTransform rect = fill.rectTransform;
+            rect.sizeDelta = new Vector2(Mathf.Clamp01(normalizedValue) * maxWidth, rect.sizeDelta.y);
+        }
+
+        // Returns a compact text glyph that mirrors the current procedural shard shape.
+        private static string ShapeGlyph(ColorShapeType shapeType)
+        {
+            switch (shapeType)
+            {
+                case ColorShapeType.Cube:
+                    return "■";
+                case ColorShapeType.Capsule:
+                    return "▮";
+                case ColorShapeType.Diamond:
+                    return "◆";
+                default:
+                    return "●";
+            }
         }
 
         // Updates the central gameplay message text.
@@ -416,6 +501,11 @@ namespace ColorGateRush
         {
             EnsureCanvas();
             _messageText.text = message;
+            if (_messageToastPanel != null)
+            {
+                _messageToastPanel.SetActive(!string.IsNullOrEmpty(message));
+            }
+
             _messageHideAt = string.IsNullOrEmpty(message) ? 0f : Time.unscaledTime + Mathf.Max(0.1f, seconds);
         }
 
@@ -428,6 +518,11 @@ namespace ColorGateRush
             }
 
             _messageText.text = string.Empty;
+            if (_messageToastPanel != null)
+            {
+                _messageToastPanel.SetActive(false);
+            }
+
             _messageHideAt = 0f;
         }
 
@@ -897,7 +992,7 @@ namespace ColorGateRush
             return panel;
         }
 
-        // Builds the compact in-game HUD.
+        // Builds the compact in-game HUD as a neon arcade card with transient toast messaging.
         private GameObject CreateHudPanel(Transform parent)
         {
             GameObject panel = CreatePanel(parent, "HudPanel", new Color(0f, 0f, 0f, 0f));
@@ -907,25 +1002,79 @@ namespace ColorGateRush
                 new Vector2(0f, 1f),
                 new Vector2(0f, 1f),
                 new Vector2(24f, -24f),
-                new Vector2(560f, 362f),
-                HudPanelColor(0.78f));
-            _scoreText = CreateText(infoPanel.transform, "ScoreText", new Vector2(24f, -18f), TextAnchor.UpperLeft, 32, new Vector2(512f, 326f), string.Empty);
+                new Vector2(572f, 374f),
+                HudPanelColor(0.74f));
+            CreateHudImage(infoPanel.transform, "HudTopAccent", new Vector2(0f, 1f), new Vector2(0f, 1f), Vector2.zero, new Vector2(572f, 4f), VisualTheme.Current().HudAccentColor);
+            CreateHudImage(infoPanel.transform, "HudLeftAccent", new Vector2(0f, 1f), new Vector2(0f, 1f), Vector2.zero, new Vector2(4f, 374f), VisualTheme.Current().HudAccentColor);
+            CreateHudImage(infoPanel.transform, "HudBottomAccent", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, -370f), new Vector2(572f, 3f), new Color(0.85f, 0.25f, 1f, 0.72f));
+            CreateHudImage(infoPanel.transform, "HudScoreDivider", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(24f, -154f), new Vector2(524f, 2f), new Color(1f, 1f, 1f, 0.13f));
+
+            _hudModeText = CreateAnchoredText(infoPanel.transform, "HudModeText", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(24f, -18f), TextAnchor.UpperLeft, 24, new Vector2(220f, 34f), string.Empty);
+            _hudModeText.color = VisualTheme.Current().HudAccentColor;
+            AddTextShadow(_hudModeText);
+            Text scoreLabel = CreateAnchoredText(infoPanel.transform, "HudScoreLabelText", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(24f, -52f), TextAnchor.UpperLeft, 22, new Vector2(160f, 30f), "SCORE");
+            scoreLabel.color = new Color(1f, 1f, 1f, 0.72f);
+            AddTextShadow(scoreLabel);
+            _scoreText = CreateAnchoredText(infoPanel.transform, "HudScoreValueText", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(24f, -76f), TextAnchor.UpperLeft, 62, new Vector2(260f, 74f), string.Empty);
             AddTextShadow(_scoreText);
-            _messageText = CreateText(panel.transform, "MessageText", Vector2.zero, TextAnchor.MiddleCenter, 54, new Vector2(900f, 260f), string.Empty);
+
+            _hudTargetText = CreateAnchoredText(infoPanel.transform, "HudTargetText", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(24f, -162f), TextAnchor.UpperLeft, 26, new Vector2(524f, 34f), string.Empty);
+            AddTextShadow(_hudTargetText);
+            CreateHudImage(infoPanel.transform, "HudProgressTrack", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(24f, -205f), new Vector2(346f, 15f), new Color(1f, 1f, 1f, 0.12f));
+            _hudProgressFill = CreateHudImage(infoPanel.transform, "HudProgressFill", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(24f, -205f), new Vector2(0f, 15f), VisualTheme.Current().HudAccentColor);
+            _hudProgressText = CreateAnchoredText(infoPanel.transform, "HudProgressText", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(386f, -197f), TextAnchor.UpperLeft, 22, new Vector2(170f, 32f), string.Empty);
+            _hudProgressText.color = new Color(1f, 0.90f, 0.28f, 1f);
+            AddTextShadow(_hudProgressText);
+
+            Text mistakeLabel = CreateAnchoredText(infoPanel.transform, "HudMistakeLabelText", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(24f, -244f), TextAnchor.UpperLeft, 24, new Vector2(78f, 34f), "기회");
+            mistakeLabel.color = new Color(1f, 1f, 1f, 0.72f);
+            AddTextShadow(mistakeLabel);
+            _hudMistakeIconsText = CreateAnchoredText(infoPanel.transform, "HudMistakeIconsText", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(106f, -239f), TextAnchor.UpperLeft, 34, new Vector2(210f, 46f), string.Empty);
+            AddTextShadow(_hudMistakeIconsText);
+
+            _hudColorChip = CreateHudImage(infoPanel.transform, "HudCurrentColorChip", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(24f, -306f), new Vector2(48f, 48f), Color.white);
+            _hudShapeGlyphText = CreateAnchoredText(infoPanel.transform, "HudCurrentShapeGlyph", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(24f, -306f), TextAnchor.MiddleCenter, 30, new Vector2(48f, 48f), string.Empty);
+            _hudShapeGlyphText.color = Color.black;
+            _hudCurrentText = CreateAnchoredText(infoPanel.transform, "HudCurrentText", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(84f, -302f), TextAnchor.UpperLeft, 27, new Vector2(450f, 48f), string.Empty);
+            AddTextShadow(_hudCurrentText);
+
+            _messageToastPanel = CreateAnchoredPanel(
+                panel.transform,
+                "HudToastPanel",
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0f, 190f),
+                new Vector2(760f, 118f),
+                HudPanelColor(0.62f));
+            CreateHudImage(_messageToastPanel.transform, "HudToastAccent", new Vector2(0f, 1f), new Vector2(0f, 1f), Vector2.zero, new Vector2(760f, 4f), VisualTheme.Current().HudAccentColor);
+            _messageText = CreateAnchoredText(_messageToastPanel.transform, "MessageText", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -2f), TextAnchor.MiddleCenter, 34, new Vector2(700f, 86f), string.Empty);
             AddTextShadow(_messageText);
+            _messageToastPanel.SetActive(false);
             _debugText = CreateText(panel.transform, "DebugText", new Vector2(-32f, 32f), TextAnchor.LowerRight, 28, new Vector2(450f, 100f), string.Empty);
             AddTextShadow(_debugText);
             _hintText = CreateText(panel.transform, "HintText", new Vector2(0f, -150f), TextAnchor.UpperCenter, 30, new Vector2(960f, 90f), string.Empty);
             AddTextShadow(_hintText);
+            _comboBadgePanel = CreateAnchoredPanel(
+                panel.transform,
+                "ComboBadgePanel",
+                new Vector2(1f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(-32f, 34f),
+                new Vector2(132f, 78f),
+                HudPanelColor(0.58f));
+            CreateHudImage(_comboBadgePanel.transform, "ComboBadgeAccent", new Vector2(0f, 1f), new Vector2(0f, 1f), Vector2.zero, new Vector2(132f, 4f), new Color(1f, 0.90f, 0.28f, 0.92f));
+            _hudComboText = CreateAnchoredText(_comboBadgePanel.transform, "ComboBadgeText", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -3f), TextAnchor.MiddleCenter, 42, new Vector2(116f, 60f), "x1");
+            _hudComboText.color = new Color(1f, 1f, 1f, 0.82f);
+            AddTextShadow(_hudComboText);
             CreateAnchoredButton(
                 panel.transform,
                 "PauseButton",
                 new Vector2(1f, 1f),
                 new Vector2(1f, 1f),
                 new Vector2(-32f, -32f),
-                new Vector2(250f, 76f),
-                "일시정지",
-                32,
+                new Vector2(96f, 76f),
+                "Ⅱ",
+                40,
                 () => _onPause?.Invoke());
             return panel;
         }
@@ -1010,6 +1159,30 @@ namespace ColorGateRush
             image.color = color;
             image.raycastTarget = false;
             return go;
+        }
+
+        // Creates an anchored image rectangle for HUD cards, separators, chips, and accent lines.
+        private static Image CreateHudImage(
+            Transform parent,
+            string name,
+            Vector2 anchor,
+            Vector2 pivot,
+            Vector2 anchoredPosition,
+            Vector2 size,
+            Color color)
+        {
+            GameObject go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            RectTransform rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = anchor;
+            rect.anchorMax = anchor;
+            rect.pivot = pivot;
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = size;
+            Image image = go.AddComponent<Image>();
+            image.color = color;
+            image.raycastTarget = false;
+            return image;
         }
 
         // Creates a text button using uGUI primitives only.
@@ -1126,14 +1299,48 @@ namespace ColorGateRush
             rect.sizeDelta = size;
 
             Image image = go.AddComponent<Image>();
-            image.color = ButtonColor();
+            image.color = HudPanelColor(0.78f);
+            CreateHudImage(go.transform, name + "TopAccent", new Vector2(0f, 1f), new Vector2(0f, 1f), Vector2.zero, new Vector2(size.x, 4f), VisualTheme.Current().HudAccentColor);
             Button button = go.AddComponent<Button>();
             button.targetGraphic = image;
             button.onClick.AddListener(() => onClick?.Invoke());
 
             Text text = CreateText(go.transform, name + "Text", Vector2.zero, TextAnchor.MiddleCenter, fontSize, size, label);
-            text.color = ButtonTextColor();
+            text.color = VisualTheme.Current().HudTextColor;
+            AddTextShadow(text);
             return button;
+        }
+
+        // Creates an anchored uGUI text element when HUD layout needs explicit anchor and pivot control.
+        private static Text CreateAnchoredText(
+            Transform parent,
+            string name,
+            Vector2 anchor,
+            Vector2 pivot,
+            Vector2 anchoredPosition,
+            TextAnchor alignment,
+            int fontSize,
+            Vector2 size,
+            string initialText)
+        {
+            GameObject go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            Text text = go.AddComponent<Text>();
+            text.font = BuiltinFont();
+            text.fontSize = fontSize;
+            text.alignment = alignment;
+            text.color = VisualTheme.Current().HudTextColor;
+            text.raycastTarget = false;
+            text.supportRichText = true;
+            text.text = initialText;
+
+            RectTransform rect = go.GetComponent<RectTransform>();
+            rect.anchorMin = anchor;
+            rect.anchorMax = anchor;
+            rect.pivot = pivot;
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = size;
+            return text;
         }
 
         // Creates an anchored uGUI text element.
@@ -1155,6 +1362,7 @@ namespace ColorGateRush
             text.alignment = anchor;
             text.color = VisualTheme.Current().HudTextColor;
             text.raycastTarget = false;
+            text.supportRichText = true;
 
             RectTransform rect = go.GetComponent<RectTransform>();
             rect.sizeDelta = size;

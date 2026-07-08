@@ -11,6 +11,15 @@ This checklist is for gameplay and build-readiness playtests with the two approv
 5. Run `Tools/Color Gate Rush/Generate Release Readiness Report`.
 6. Optional clean telemetry: run `Tools/Color Gate Rush/Reset Playtest Stats`.
 
+## Release Candidate Build Settings Review
+
+- Confirm Company Name is no longer `DefaultCompany` before external release.
+- Confirm Android Application Identifier is a project-owned reverse-DNS id, not the Unity template id.
+- Confirm Product Name, bundle version, Android version code, and portrait orientation are intentional.
+- Confirm APK is used for local device tests and AAB is used only for Google Play submission.
+- Confirm Development Build is off for submission builds and keystore/signing files stay outside the repository.
+- Confirm app icon, splash, and store screenshots are still placeholder or explicitly approved for RC use.
+
 ## Android APK Smoke Test
 
 1. Build a local APK from Unity Build Profiles.
@@ -37,14 +46,18 @@ This checklist is for gameplay and build-readiness playtests with the two approv
 
 ## Stage Sampling
 
-- Stage 1: first 30 seconds, tutorial, collection clarity, obstacle rarity.
-- Stage 2-5: early unlock rhythm and 1-star progression.
+- Stage 1-5: first-session flow, tutorial, collection clarity, obstacle rarity, early unlock rhythm, and 1-star progression.
 - Stage 10: mid-campaign speed and obstacle pressure.
 - Stage 20: advanced gate frequency and route readability.
 - Stage 30: end-campaign strict 3-star target and visual clarity.
-- Endless Mode: run for at least 2 minutes and check speed ramp, row spacing readability, rolling generation, pause, retry, MainMenu return, and no object buildup.
+- Endless 30 seconds: confirm the early speed ramp is readable and wrong-shard chances are clear.
+- Endless 60 seconds: confirm obstacle/off-color pressure and gate frequency feel higher without unfair rows.
+- Endless 90 seconds: confirm high-speed row spacing remains playable and no object buildup is visible.
+- Endless 2+ minutes: check rolling generation, pause, retry, MainMenu return, and no obvious memory/performance growth.
 - Wrong-shard rule: in both Stage and Endless Mode, collect two wrong-color shards and confirm the run continues; collect a third and confirm game over with the wrong-shard limit reason.
 - HUD regression: confirm both Stage and Endless HUDs show three chance icons and update them immediately after each wrong-color shard.
+- Combo HUD regression: confirm combo appears only as the bottom-right `xN` badge and never as a center toast.
+- Gate HUD regression: confirm color/shape changes update the top-left chip/label and never open a center toast.
 
 ## Save, Unlock, And Stats
 
@@ -75,6 +88,8 @@ This checklist is for gameplay and build-readiness playtests with the two approv
 ## Audio Playtest Notes
 
 - Menu BGM uses `ColorgateRush_Menu.mp3`; Stage and Endless gameplay use `ColorgateRush_Ingame.mp3`.
+- Move MainMenu -> StageSelect -> Stage -> Pause -> Resume -> Failed -> Retry -> Completed -> MainMenu and confirm BGM does not overlap or double.
+- Move MainMenu -> Endless -> Pause -> Retry -> MainMenu and confirm only one gameplay/menu BGM source is audible.
 - Verify the Music slider can be dragged smoothly from 0% to 100% and that Music Off stops only BGM.
 - Verify the SFX slider can be dragged smoothly from 0% to 100% and that SFX Off stops only one-shot sounds.
 - Do not add more BGM/SFX before this playtest pass finishes.

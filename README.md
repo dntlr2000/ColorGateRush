@@ -38,6 +38,8 @@ Stage Select lists 30 deterministic stages in a scrollable two-column grid.
 - Finish grants at least 1 star and preserves the current HUD score.
 - 2-star and 3-star score targets are shown in the HUD and use that same current score.
 - The HUD also shows the score remaining to reach the 3-star target.
+- Combo is shown as a compact bottom-right `xN` badge instead of a center toast.
+- Current color/shape changes are read from the top-left HUD chip and label, not from center popups.
 - 2 stars require the rounded-up two-thirds point of the 3-star target.
 - 3 stars are tuned as a near-perfect route reward; missing or miscollecting 1-2 key shards can make the cutoff hard to reach.
 - Any clear with at least 1 star unlocks the next stage.
@@ -136,7 +138,7 @@ Unity menu:
 - `Tools/Color Gate Rush/Reset Playtest Stats`
 - `Tools/Color Gate Rush/Reset Endless Records`
 
-Manual QA should verify MainMenu to StageSelect, Endless entry, Quit behavior, Stage unlocks, pause/resume, no automatic restart, row fairness, star targets, Playtest Stats recording/reset, Endless record reset, Music/SFX toggles and sliders, Stage 1 tutorial, and the visual polish checklist for HUD contrast, track readability, shard/obstacle/gate/finish clarity, mobile-safe VFX, Android pink-material absence, and PC renderer visibility.
+Manual QA should verify MainMenu to StageSelect, Endless entry, Quit behavior, Stage unlocks, pause/resume, no automatic restart, row fairness, star targets, Playtest Stats recording/reset, Endless record reset, Music/SFX toggles and sliders, Stage 1 tutorial, and the visual polish checklist for HUD contrast, bottom-right combo badge, track readability, shard/obstacle/gate/finish clarity, mobile-safe VFX, Android pink-material absence, and PC renderer visibility.
 
 Stage and Endless QA should verify the HUD shows three wrong-shard chance icons, the first two wrong-color shards continue the run, and the third opens the Failed/result screen with the wrong-shard limit reason. Endless QA should also verify speed/difficulty rises without changing `Time.timeScale` and row spacing remains readable as speed increases.
 

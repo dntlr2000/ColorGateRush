@@ -32,10 +32,10 @@ Hard failures must be fixed before packaging. Warnings identify manual release d
 
 ## Android Pre-Build Checklist
 
-- Product name is final enough for tester builds.
-- Company name is not `DefaultCompany`.
-- Application Identifier is a unique reverse-DNS id, not a Unity template id.
-- Bundle version and Android version code are intentionally set.
+- Product name is final enough for tester builds. Current static check target: `ColorGateRush`.
+- Company name is not `DefaultCompany`; change it in Unity Player Settings before external RC distribution.
+- Application Identifier is a unique reverse-DNS id, not a Unity template id such as `com.UnityTechnologies.com.unity.template.urpblank`.
+- Bundle version and Android version code are intentionally set. Current static check target: version `0.1.0`, Android version code `1`.
 - Portrait-only orientation is selected for the vertical runner UI.
 - `Validate Runtime Visuals` passes before device packaging.
 - Runtime generated components use generic component creation, not `AddComponent(string)` or `GameObject.CreatePrimitive`.
@@ -50,6 +50,7 @@ Hard failures must be fixed before packaging. Warnings identify manual release d
 - Use Android App Bundle (AAB) for Google Play submission.
 - Keystore, passwords, and signing credentials are created and stored outside the repository.
 - Do not commit keystore files, passwords, or signing notes.
+- App icon, splash screen, and store screenshots are reviewed; treat placeholder branding as a warning before public submission.
 
 ## Android Manual Build Steps
 
@@ -101,6 +102,8 @@ Hard failures must be fixed before packaging. Warnings identify manual release d
 - StageSelect shows 30 stages with locked/unlocked/star states.
 - HUD remains readable on a small portrait screen.
 - Pause button and top-left HUD do not overlap the safe area.
+- Combo appears as a bottom-right `xN` badge and never as a center toast.
+- Gate color/shape changes update the top-left current chip/label without opening a center toast.
 - Collect, gate, hit, and finish VFX stay readable and short.
 - Menu BGM (`ColorgateRush_Menu.mp3`) and gameplay BGM (`ColorgateRush_Ingame.mp3`) do not overlap across Start, Pause, Retry, Failed, Completed, StageSelect, Endless, and MainMenu transitions.
 - Music Off, SFX Off, Music Volume slider, and SFX Volume slider settings work independently.

@@ -242,10 +242,6 @@ namespace ColorGateRush
                 ProceduralFactory.CollectBurst(shard.transform.position, GameConstants.ToUnityColor(shard.ColorId));
                 ProceduralFactory.FloatingText(shard.transform.position + Vector3.up * 0.65f, "+" + gain, GameConstants.ToUnityColor(shard.ColorId));
                 _audio.PlayCollect(_combo);
-                if (_combo >= 3)
-                {
-                    _ui.ShowMessage("콤보 x" + _combo);
-                }
                 Destroy(shard.gameObject);
             }
             else
@@ -290,7 +286,6 @@ namespace ColorGateRush
             ProceduralFactory.FloatingText(runner.transform.position + Vector3.up * 1.3f, "색상 변경! " + GameConstants.ShapeName(gate.TargetColor), GameConstants.ToUnityColor(gate.TargetColor));
             _audio.PlayGate();
             UpdateHud();
-            _ui.ShowMessage("색상 변경! 이제 " + GameConstants.GetVisualProfile(gate.TargetColor).HudLabel);
         }
 
         // Ends the current run as failed when the runner hits an obstacle.

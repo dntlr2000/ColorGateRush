@@ -103,6 +103,8 @@ The final Codex response should include:
 - Confirm result and pause screens do not auto-restart/auto-resume and only explicit buttons or keyboard shortcuts change state.
 - Confirm stage-start guidance appears briefly and disappears without triggering start/retry/resume.
 - Confirm persistent center gameplay guide text does not remain during normal play.
+- Confirm combo changes do not open a center toast and are shown only by the bottom-right `xN` badge.
+- Confirm gate color/shape changes do not open a center toast and are reflected by the top-left current color/shape chip.
 - Confirm PlayerPrefs keys use the `CGR_` prefix.
 - Confirm Reset Local Progress deletes only `CGR_` keys and never calls `PlayerPrefs.DeleteAll`.
 - Confirm Playtest Stats records attempts, clears, fails, quits, best score, best stars, last score, and last stars only at stage start/end/menu-exit events.
@@ -124,6 +126,7 @@ The final Codex response should include:
 - Confirm Color Assist uses color-specific primitive shapes and high-contrast support without external sprites.
 - Confirm shards and the player no longer create black TextMesh symbol overlays.
 - Confirm the top-left HUD uses a translucent contrast panel and shadowed text for stage, score, star targets, and current color/shape.
+- Confirm the center toast is reserved for short start/wrong-shard warnings only.
 - Confirm background, track, collectibles, and obstacles remain visually distinct on mobile portrait screens.
 - Confirm `VisualTheme` is the source of truth for world, HUD, and VFX colors.
 - Confirm `RuntimeMaterialProvider` is the source of truth for generated material/shader creation.

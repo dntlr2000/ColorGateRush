@@ -719,9 +719,28 @@ namespace ColorGateRush.EditorTools
                 throw new InvalidOperationException("RuntimeUi must clear persistent center hint text and expose ClearMessage for state transitions.");
             }
 
+            if (!source.Contains("HudToastPanel")
+                || !source.Contains("_messageToastPanel.SetActive(!string.IsNullOrEmpty(message))")
+                || !source.Contains("_messageToastPanel.SetActive(false)"))
+            {
+                throw new InvalidOperationException("RuntimeUi must keep center guidance in a small transient toast panel that hides on timeout/state changes.");
+            }
+
             if (source.Contains("StartRun(") || source.Contains("StartStage(") || source.Contains("RestartCurrentRun("))
             {
                 throw new InvalidOperationException("RuntimeUi stage-start hint must not trigger gameplay transitions.");
+            }
+
+            string gameManagerPath = "Assets/_Project/Scripts/Runtime/GameManager.cs";
+            if (File.Exists(gameManagerPath))
+            {
+                string gameManagerSource = File.ReadAllText(gameManagerPath);
+                if (gameManagerSource.Contains("ShowMessage(\"콤보")
+                    || gameManagerSource.Contains("ShowMessage(\"색상 변경")
+                    || gameManagerSource.Contains("ShowMessage(\"색상/도형"))
+                {
+                    throw new InvalidOperationException("Combo and color-change feedback must not use the central toast channel.");
+                }
             }
         }
 
@@ -1317,6 +1336,28 @@ namespace ColorGateRush.EditorTools
             if (!runtimeUiSource.Contains("HudInfoPanel") || !runtimeUiSource.Contains("AddTextShadow") || !runtimeUiSource.Contains("profile.HudLabel"))
             {
                 throw new InvalidOperationException("Runtime HUD should include a contrast panel, text shadow, and color/shape label.");
+            }
+
+            string[] requiredHudTokens =
+            {
+                "HudTopAccent",
+                "HudProgressFill",
+                "HudMistakeIconsText",
+                "HudCurrentColorChip",
+                "HudCurrentShapeGlyph",
+                "ComboBadgePanel",
+                "ComboBadgeText",
+                "FormatMistakeIcons",
+                "SetComboBadge",
+                "SetCurrentVisual",
+                "SetHudProgress"
+            };
+            foreach (string token in requiredHudTokens)
+            {
+                if (!runtimeUiSource.Contains(token))
+                {
+                    throw new InvalidOperationException("Runtime HUD polish hook missing: " + token);
+                }
             }
         }
 
