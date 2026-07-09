@@ -848,6 +848,7 @@ namespace ColorGateRush
             GameObject panel = CreatePanel(parent, "TitleScreenPanel", Color.black);
             Button tapButton = panel.AddComponent<Button>();
             tapButton.transition = Selectable.Transition.None;
+            AttachButtonClickSfx(tapButton);
             tapButton.onClick.AddListener(() => _onTitleContinue?.Invoke());
 
             GameObject imageGo = new GameObject("TitleScreenImage");
@@ -1032,7 +1033,7 @@ namespace ColorGateRush
                 string label = unlocked
                     ? LocalizationManager.T(LocalizationKey.StageLabel, stage.StageIndex) + " " + StarsText(getBestStars(stage.StageIndex))
                     : LocalizationManager.T(LocalizationKey.StageLockedLabel, stage.StageIndex);
-                Button button = CreateButton(_stageButtonRoot, "StageButton_" + stage.StageIndex, Vector2.zero, label, () => _onStageSelected?.Invoke(stageIndex));
+                Button button = CreateButton(_stageButtonRoot, "StageButton_" + stage.StageIndex, Vector2.zero, label, () => _onStageSelected?.Invoke(stageIndex), usePrimaryStyle: false);
                 button.interactable = unlocked;
                 if (!unlocked)
                 {
@@ -1062,7 +1063,7 @@ namespace ColorGateRush
 
             _settingsGeneralSection = CreateSettingsSection(panel.transform, "SettingsGeneralSection");
             GameObject musicGroup = CreateSettingsOptionGroup(_settingsGeneralSection.transform, "MusicVolumeGroup", new Vector2(0f, 155f), new Vector2(SettingsContentWidth, 232f));
-            Button musicButton = CreateButton(musicGroup.transform, "MusicToggleButton", new Vector2(0f, 72f), "Music", () => _onToggleMusic?.Invoke());
+            Button musicButton = CreateButton(musicGroup.transform, "MusicToggleButton", new Vector2(0f, 72f), "Music", () => _onToggleMusic?.Invoke(), usePrimaryStyle: false);
             ConfigureSettingsControlButton(musicButton, new Vector2(SettingsContentWidth, SettingsPrimaryButtonHeight), 34);
             _musicButtonText = musicButton.GetComponentInChildren<Text>();
             _musicVolumeButtonText = CreateText(musicGroup.transform, "MusicVolumeLabel", new Vector2(0f, -2f), TextAnchor.MiddleCenter, 30, new Vector2(SettingsContentWidth, 44f), LocalizationManager.T(LocalizationKey.MusicVolume));
@@ -1070,36 +1071,36 @@ namespace ColorGateRush
             _musicVolumeSlider = CreateSlider(musicGroup.transform, "MusicVolumeSlider", new Vector2(0f, -86f), GameSettings.MusicVolume, HandleMusicVolumeChanged);
 
             GameObject sfxGroup = CreateSettingsOptionGroup(_settingsGeneralSection.transform, "SfxVolumeGroup", new Vector2(0f, -112f), new Vector2(SettingsContentWidth, 232f));
-            Button sfxButton = CreateButton(sfxGroup.transform, "SfxToggleButton", new Vector2(0f, 72f), "SFX", () => _onToggleSfx?.Invoke());
+            Button sfxButton = CreateButton(sfxGroup.transform, "SfxToggleButton", new Vector2(0f, 72f), "SFX", () => _onToggleSfx?.Invoke(), usePrimaryStyle: false);
             ConfigureSettingsControlButton(sfxButton, new Vector2(SettingsContentWidth, SettingsPrimaryButtonHeight), 34);
             _sfxButtonText = sfxButton.GetComponentInChildren<Text>();
             _sfxVolumeButtonText = CreateText(sfxGroup.transform, "SfxVolumeLabel", new Vector2(0f, -2f), TextAnchor.MiddleCenter, 30, new Vector2(SettingsContentWidth, 44f), LocalizationManager.T(LocalizationKey.SfxVolume));
             AddTextShadow(_sfxVolumeButtonText);
             _sfxVolumeSlider = CreateSlider(sfxGroup.transform, "SfxVolumeSlider", new Vector2(0f, -86f), GameSettings.SfxVolume, HandleSfxVolumeChanged);
-            Button cameraShakeButton = CreateButton(_settingsGeneralSection.transform, "CameraShakeToggleButton", new Vector2(-144f, -330f), "Camera", () => _onToggleCameraShake?.Invoke());
+            Button cameraShakeButton = CreateButton(_settingsGeneralSection.transform, "CameraShakeToggleButton", new Vector2(-144f, -330f), "Camera", () => _onToggleCameraShake?.Invoke(), usePrimaryStyle: false);
             ConfigureSettingsControlButton(cameraShakeButton, new Vector2(SettingsPairButtonWidth, SettingsPrimaryButtonHeight), 27);
             _cameraShakeButtonText = cameraShakeButton.GetComponentInChildren<Text>();
-            Button colorAssistButton = CreateButton(_settingsGeneralSection.transform, "ColorAssistToggleButton", new Vector2(144f, -330f), "Assist", () => _onToggleColorAssist?.Invoke());
+            Button colorAssistButton = CreateButton(_settingsGeneralSection.transform, "ColorAssistToggleButton", new Vector2(144f, -330f), "Assist", () => _onToggleColorAssist?.Invoke(), usePrimaryStyle: false);
             ConfigureSettingsControlButton(colorAssistButton, new Vector2(SettingsPairButtonWidth, SettingsPrimaryButtonHeight), 27);
             _colorAssistButtonText = colorAssistButton.GetComponentInChildren<Text>();
 
             _settingsLanguageSection = CreateSettingsSection(panel.transform, "SettingsLanguageSection");
             _languageLabelText = CreateLocalizedText(_settingsLanguageSection.transform, "LanguageLabel", new Vector2(0f, 130f), TextAnchor.MiddleCenter, 38, new Vector2(SettingsContentWidth, 60f), LocalizationKey.Language);
             AddTextShadow(_languageLabelText);
-            _koreanLanguageButton = CreateLocalizedButton(_settingsLanguageSection.transform, "KoreanLanguageButton", new Vector2(-144f, 20f), LocalizationKey.Korean, () => SetLanguage(Language.Korean));
+            _koreanLanguageButton = CreateLocalizedButton(_settingsLanguageSection.transform, "KoreanLanguageButton", new Vector2(-144f, 20f), LocalizationKey.Korean, () => SetLanguage(Language.Korean), usePrimaryStyle: false);
             ConfigureSettingsControlButton(_koreanLanguageButton, new Vector2(SettingsPairButtonWidth, SettingsPrimaryButtonHeight), 30);
-            _englishLanguageButton = CreateLocalizedButton(_settingsLanguageSection.transform, "EnglishLanguageButton", new Vector2(144f, 20f), LocalizationKey.English, () => SetLanguage(Language.English));
+            _englishLanguageButton = CreateLocalizedButton(_settingsLanguageSection.transform, "EnglishLanguageButton", new Vector2(144f, 20f), LocalizationKey.English, () => SetLanguage(Language.English), usePrimaryStyle: false);
             ConfigureSettingsControlButton(_englishLanguageButton, new Vector2(SettingsPairButtonWidth, SettingsPrimaryButtonHeight), 30);
 
             _settingsDataSection = CreateSettingsSection(panel.transform, "SettingsDataSection");
-            Button resetProgressButton = CreateLocalizedButton(_settingsDataSection.transform, "ResetProgressButton", new Vector2(0f, 130f), LocalizationKey.StageProgressReset, ShowResetConfirm);
+            Button resetProgressButton = CreateLocalizedButton(_settingsDataSection.transform, "ResetProgressButton", new Vector2(0f, 130f), LocalizationKey.StageProgressReset, ShowResetConfirm, usePrimaryStyle: false);
             ConfigureSettingsControlButton(resetProgressButton, new Vector2(SettingsContentWidth, SettingsPrimaryButtonHeight), 30);
-            Button resetEndlessButton = CreateLocalizedButton(_settingsDataSection.transform, "ResetEndlessRecordsButton", new Vector2(0f, 20f), LocalizationKey.ResetEndlessRecords, ShowEndlessResetConfirm);
+            Button resetEndlessButton = CreateLocalizedButton(_settingsDataSection.transform, "ResetEndlessRecordsButton", new Vector2(0f, 20f), LocalizationKey.ResetEndlessRecords, ShowEndlessResetConfirm, usePrimaryStyle: false);
             ConfigureSettingsControlButton(resetEndlessButton, new Vector2(SettingsContentWidth, SettingsPrimaryButtonHeight), 30);
             Text irreversibleText = CreateLocalizedText(_settingsDataSection.transform, "SettingsDataWarningText", new Vector2(0f, -120f), TextAnchor.MiddleCenter, 30, new Vector2(SettingsContentWidth, 96f), LocalizationKey.ResetCannotBeUndone);
             AddTextShadow(irreversibleText);
 
-            Button backButton = CreateLocalizedButton(panel.transform, "SettingsBackButton", new Vector2(0f, SettingsBottomActionY), LocalizationKey.MainMenu, () => _onMainMenu?.Invoke());
+            Button backButton = CreateLocalizedButton(panel.transform, "SettingsBackButton", new Vector2(0f, SettingsBottomActionY), LocalizationKey.MainMenu, () => _onMainMenu?.Invoke(), usePrimaryStyle: false);
             ConfigureSettingsControlButton(backButton, new Vector2(SettingsContentWidth, SettingsPrimaryButtonHeight), 32);
             _resetConfirmPanel = CreateResetConfirmPanel(panel.transform);
             _resetConfirmPanel.SetActive(false);
@@ -1114,8 +1115,8 @@ namespace ColorGateRush
         {
             GameObject panel = CreatePanel(parent, "ResetConfirmPanel", ScreenPanelColor(0.86f));
             CreateLocalizedText(panel.transform, "ResetConfirmText", new Vector2(0f, 70f), TextAnchor.MiddleCenter, 38, new Vector2(860f, 160f), LocalizationKey.ResetProgressConfirm);
-            CreateLocalizedButton(panel.transform, "ResetConfirmYesButton", new Vector2(-250f, -90f), LocalizationKey.Reset, () => _onResetProgress?.Invoke());
-            CreateLocalizedButton(panel.transform, "ResetConfirmNoButton", new Vector2(250f, -90f), LocalizationKey.Cancel, () => _resetConfirmPanel.SetActive(false));
+            CreateLocalizedButton(panel.transform, "ResetConfirmYesButton", new Vector2(-250f, -90f), LocalizationKey.Reset, () => _onResetProgress?.Invoke(), usePrimaryStyle: false);
+            CreateLocalizedButton(panel.transform, "ResetConfirmNoButton", new Vector2(250f, -90f), LocalizationKey.Cancel, () => _resetConfirmPanel.SetActive(false), usePrimaryStyle: false);
             return panel;
         }
 
@@ -1131,8 +1132,8 @@ namespace ColorGateRush
         {
             GameObject panel = CreatePanel(parent, "EndlessResetConfirmPanel", ScreenPanelColor(0.86f));
             CreateLocalizedText(panel.transform, "EndlessResetConfirmText", new Vector2(0f, 70f), TextAnchor.MiddleCenter, 38, new Vector2(860f, 160f), LocalizationKey.ResetEndlessConfirm);
-            CreateLocalizedButton(panel.transform, "EndlessResetConfirmYesButton", new Vector2(-250f, -90f), LocalizationKey.ResetRecords, () => _onResetEndlessRecords?.Invoke());
-            CreateLocalizedButton(panel.transform, "EndlessResetConfirmNoButton", new Vector2(250f, -90f), LocalizationKey.Cancel, () => _endlessResetConfirmPanel.SetActive(false));
+            CreateLocalizedButton(panel.transform, "EndlessResetConfirmYesButton", new Vector2(-250f, -90f), LocalizationKey.ResetRecords, () => _onResetEndlessRecords?.Invoke(), usePrimaryStyle: false);
+            CreateLocalizedButton(panel.transform, "EndlessResetConfirmNoButton", new Vector2(250f, -90f), LocalizationKey.Cancel, () => _endlessResetConfirmPanel.SetActive(false), usePrimaryStyle: false);
             return panel;
         }
 
@@ -1406,26 +1407,26 @@ namespace ColorGateRush
             return image;
         }
 
-        // Creates a text button using uGUI primitives only.
-        private static Button CreateButton(Transform parent, string name, Vector2 anchoredPosition, string label, Action onClick)
+        // Creates a text button and applies the primary image style unless a Settings-only control opts out.
+        private static Button CreateButton(Transform parent, string name, Vector2 anchoredPosition, string label, Action onClick, bool usePrimaryStyle = true)
         {
             GameObject go = new GameObject(name);
             go.transform.SetParent(parent, false);
             RectTransform rect = go.AddComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(480f, 96f);
+            rect.sizeDelta = new Vector2(480f, 92f);
             rect.anchoredPosition = anchoredPosition;
             rect.anchorMin = new Vector2(0.5f, 0.5f);
             rect.anchorMax = new Vector2(0.5f, 0.5f);
             rect.pivot = new Vector2(0.5f, 0.5f);
 
             Image image = go.AddComponent<Image>();
-            image.color = ButtonColor();
             Button button = go.AddComponent<Button>();
             button.targetGraphic = image;
+            AttachButtonClickSfx(button);
             button.onClick.AddListener(() => onClick?.Invoke());
 
             Text text = CreateText(go.transform, name + "Text", Vector2.zero, TextAnchor.MiddleCenter, 40, rect.sizeDelta, label);
-            text.color = ButtonTextColor();
+            ApplyButtonVisualStyle(button, image, text, usePrimaryStyle);
             return button;
         }
 
@@ -1455,17 +1456,96 @@ namespace ColorGateRush
         }
 
         // Creates a text button whose generated label updates from the active localization table.
-        private static Button CreateLocalizedButton(Transform parent, string name, Vector2 anchoredPosition, LocalizationKey key, Action onClick)
+        private static Button CreateLocalizedButton(Transform parent, string name, Vector2 anchoredPosition, LocalizationKey key, Action onClick, bool usePrimaryStyle = true)
         {
-            Button button = CreateButton(parent, name, anchoredPosition, LocalizationManager.T(key), onClick);
+            Button button = CreateButton(parent, name, anchoredPosition, LocalizationManager.T(key), onClick, usePrimaryStyle);
             AttachLocalizedText(button.GetComponentInChildren<Text>(), key);
             return button;
+        }
+
+        // Applies either the shared primary sprite button style or the legacy generated Settings style.
+        private static void ApplyButtonVisualStyle(Button button, Image image, Text text, bool usePrimaryStyle)
+        {
+            if (button == null || image == null)
+            {
+                return;
+            }
+
+            if (usePrimaryStyle)
+            {
+                ApplyPrimaryButtonStyle(button, image, text);
+                return;
+            }
+
+            ApplyGeneratedButtonStyle(button, image, text);
+        }
+
+        // Applies a procedural dark-neon button style built from Unity UI primitives only.
+        private static void ApplyPrimaryButtonStyle(Button button, Image image, Text text)
+        {
+            image.sprite = null;
+            image.type = Image.Type.Simple;
+            image.color = PrimaryButtonBackgroundColor();
+            image.raycastTarget = true;
+
+            Outline outline = image.gameObject.AddComponent<Outline>();
+            outline.effectColor = PrimaryButtonBorderColor(0.84f);
+            outline.effectDistance = new Vector2(2f, -2f);
+            AddPrimaryButtonAccents(image.transform);
+
+            button.transition = Selectable.Transition.ColorTint;
+            button.colors = PrimaryButtonColors();
+
+            if (text != null)
+            {
+                text.color = PrimaryButtonTextColor();
+                text.fontStyle = FontStyle.Bold;
+                text.resizeTextForBestFit = true;
+                text.resizeTextMinSize = 24;
+                text.resizeTextMaxSize = text.fontSize;
+                AddTextShadow(text);
+                text.transform.SetAsLastSibling();
+            }
+        }
+
+        // Adds lightweight procedural accent lines so primary buttons feel neon without an image asset.
+        private static void AddPrimaryButtonAccents(Transform buttonTransform)
+        {
+            RectTransform rect = buttonTransform.GetComponent<RectTransform>();
+            if (rect == null)
+            {
+                return;
+            }
+
+            Vector2 size = rect.sizeDelta;
+            float accentWidth = Mathf.Max(0f, size.x - 44f);
+            CreateHudImage(buttonTransform, "PrimaryButtonInnerGlow", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(accentWidth, Mathf.Max(10f, size.y - 34f)), new Color(0.05f, 0.75f, 0.96f, 0.10f));
+            CreateHudImage(buttonTransform, "PrimaryButtonTopAccent", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -8f), new Vector2(accentWidth, 3f), PrimaryButtonBorderColor(0.92f));
+            CreateHudImage(buttonTransform, "PrimaryButtonBottomAccent", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 8f), new Vector2(accentWidth, 2f), new Color(0.68f, 0.18f, 1f, 0.42f));
+        }
+
+        // Restores the procedural flat button look used intentionally inside Settings.
+        private static void ApplyGeneratedButtonStyle(Button button, Image image, Text text)
+        {
+            image.sprite = null;
+            image.type = Image.Type.Simple;
+            image.color = ButtonColor();
+            ConfigureStaticSelectableTransition(button);
+
+            if (text != null)
+            {
+                text.color = ButtonTextColor();
+                text.fontStyle = FontStyle.Normal;
+                text.resizeTextForBestFit = true;
+                text.resizeTextMinSize = 20;
+                text.resizeTextMaxSize = text.fontSize;
+            }
         }
 
         // Creates one compact Settings tab button using the same generated uGUI style as other controls.
         private Button CreateSettingsTabButton(Transform parent, string name, Vector2 anchoredPosition, LocalizationKey key, SettingsTab tab)
         {
-            Button button = CreateLocalizedButton(parent, name, anchoredPosition, key, () => ShowSettingsTab(tab));
+            Button button = CreateLocalizedButton(parent, name, anchoredPosition, key, () => ShowSettingsTab(tab), usePrimaryStyle: false);
             RectTransform rect = button.GetComponent<RectTransform>();
             if (rect != null)
             {
@@ -1568,6 +1648,7 @@ namespace ColorGateRush
             slider.minValue = 0f;
             slider.maxValue = 1f;
             slider.wholeNumbers = false;
+            ConfigureStaticSelectableTransition(slider);
 
             RectTransform backgroundRect = CreateSliderImage(go.transform, "Background", new Vector2(0f, 0f), new Vector2(SettingsContentWidth, SettingsSliderTrackHeight), HudPanelColor(0.74f)).rectTransform;
             backgroundRect.anchorMin = new Vector2(0f, 0.5f);
@@ -1643,16 +1724,36 @@ namespace ColorGateRush
             rect.sizeDelta = size;
 
             Image image = go.AddComponent<Image>();
-            image.color = HudPanelColor(0.78f);
-            CreateHudImage(go.transform, name + "TopAccent", new Vector2(0f, 1f), new Vector2(0f, 1f), Vector2.zero, new Vector2(size.x, 4f), VisualTheme.Current().HudAccentColor);
             Button button = go.AddComponent<Button>();
             button.targetGraphic = image;
+            AttachButtonClickSfx(button);
             button.onClick.AddListener(() => onClick?.Invoke());
 
             Text text = CreateText(go.transform, name + "Text", Vector2.zero, TextAnchor.MiddleCenter, fontSize, size, label);
-            text.color = VisualTheme.Current().HudTextColor;
-            AddTextShadow(text);
+            ApplyGeneratedButtonStyle(button, image, text);
             return button;
+        }
+
+        // Adds one UI click listener before gameplay callbacks so all real button presses share SFX behavior.
+        private static void AttachButtonClickSfx(Button button)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            button.onClick.AddListener(ProceduralAudio.PlayUiClickGlobal);
+        }
+
+        // Disables Selectable tint transitions for Settings controls, tabs, sliders, and HUD utility buttons.
+        private static void ConfigureStaticSelectableTransition(Selectable selectable)
+        {
+            if (selectable == null)
+            {
+                return;
+            }
+
+            selectable.transition = Selectable.Transition.None;
         }
 
         // Creates an anchored uGUI text element when HUD layout needs explicit anchor and pivot control.
@@ -1777,10 +1878,42 @@ namespace ColorGateRush
             return color;
         }
 
+        // Returns the dark translucent base used by procedural primary buttons.
+        private static Color PrimaryButtonBackgroundColor()
+        {
+            return new Color(0.015f, 0.045f, 0.115f, 0.78f);
+        }
+
+        // Returns the cyan-blue outline color used by procedural primary buttons.
+        private static Color PrimaryButtonBorderColor(float alpha)
+        {
+            return new Color(0.12f, 0.88f, 1f, alpha);
+        }
+
+        // Returns a light readable label color for dark procedural primary buttons.
+        private static Color PrimaryButtonTextColor()
+        {
+            return new Color(0.90f, 0.99f, 1f, 1f);
+        }
+
+        // Returns tint states for procedural primary buttons.
+        private static ColorBlock PrimaryButtonColors()
+        {
+            ColorBlock colors = ColorBlock.defaultColorBlock;
+            colors.normalColor = PrimaryButtonBackgroundColor();
+            colors.highlightedColor = new Color(0.02f, 0.105f, 0.22f, 0.88f);
+            colors.pressedColor = new Color(0.006f, 0.026f, 0.072f, 0.92f);
+            colors.selectedColor = colors.highlightedColor;
+            colors.disabledColor = new Color(0.035f, 0.045f, 0.070f, 0.48f);
+            colors.colorMultiplier = 1f;
+            colors.fadeDuration = 0.08f;
+            return colors;
+        }
+
         // Returns a readable text color for bright accent buttons.
         private static Color ButtonTextColor()
         {
-            return Color.black;
+            return new Color(0.015f, 0.055f, 0.12f, 1f);
         }
 
         // Loads a built-in Unity font so no external font asset is required.

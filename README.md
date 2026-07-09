@@ -22,6 +22,8 @@ Main Menu `Endless Mode` starts a finish-free record run that is independent fro
 Main Menu `게임 종료` calls `Application.Quit()` in Android/PC builds, logs safely in the Editor, and shows a WebGL tab-close notice.
 Stage Select lists 30 deterministic stages in a scrollable two-column grid.
 Settings is organized into mobile-friendly General, Language, and Data sections so audio/display options, language selection, and reset actions stay clearly separated with padded content width and grouped volume sliders.
+General action buttons use a procedural Unity UI style made from dark translucent panels, thin cyan/violet accents, and readable text shadows; Settings controls, tabs, sliders, and scroll UI intentionally keep their separate flat settings style.
+The earlier cyan button PNG is retired and is not referenced by runtime UI; it is not required for builds.
 
 ## Localization
 
@@ -98,6 +100,8 @@ Runtime mesh objects are created with explicit `GameObject` + `MeshFilter` + `Me
 - Completed and Failed states stop the loop and play short procedural stings.
 - Pause/tutorial temporarily duck music volume and all state changes restore normal volume.
 - Repeated tone/buzz SFX clips are cached after creation to avoid allocating a new clip for every collect or hit.
+- User-facing buttons play a short procedural `ui_click` SFX through `ProceduralAudio`; Settings sliders and scroll UI do not play repeated click sounds while dragged.
+- Settings buttons and tabs use static visual transitions so their selected state is clear without hover/pressed color flashes.
 
 ## Settings
 

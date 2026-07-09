@@ -112,6 +112,11 @@ Hard failures must be fixed before packaging. Warnings identify manual release d
 - Settings Data separates Reset Stage Progress from Reset Endless Records and both use confirmation panels.
 - Settings tabs, buttons, sliders, and the Main Menu bottom action stay inside a padded mobile content width.
 - Settings General volume labels stay above slim sliders without overlapping the reduced white handles.
+- Main, StageSelect navigation, Pause, Result, Tutorial, and Rules action buttons use procedural Unity UI styling without relying on an external button sprite.
+- Settings controls, Settings tabs, volume sliders, and scroll UI intentionally keep the separate Settings style.
+- Settings controls, Settings tabs, sliders, and scroll UI do not flash through hover/pressed color tint transitions.
+- User-facing button clicks play the procedural `ui_click` SFX, respect SFX On/Off and SFX Volume, and do not repeat while dragging sliders or scroll views.
+- Retired button PNG assets, if still present because the editor has them locked, are not referenced by `RuntimeUi` and are not required for release.
 - Reset Endless Records clears only `CGR_Endless...` counters and does not reset unlocks, best stars, tutorial, settings, or language.
 - StageSelect shows 30 stages with locked/unlocked/star states.
 - HUD remains readable on a small portrait screen.

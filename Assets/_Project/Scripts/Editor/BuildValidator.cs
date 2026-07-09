@@ -18,6 +18,7 @@ namespace ColorGateRush.EditorTools
         private const string GameplayBgmAssetPath = "Assets/_Project/Resources/ColorGateRush/Audio/ColorgateRush_Ingame.mp3";
         private const string TitleScreenAssetPath = "Assets/_Project/Resources/ColorGateRush/Images/TitleScreen.png";
         private const string MainMenuBackgroundAssetPath = "Assets/_Project/Resources/ColorGateRush/Images/MainMenuBackground.png";
+        private const string RetiredPrimaryButtonAssetPath = "Assets/_Project/Resources/ColorGateRush/UI/PrimaryButton.png";
 
         [MenuItem("Tools/Color Gate Rush/Validate Project")]
         // Validates that the generated MVP scene and project rules are ready for play testing.
@@ -822,6 +823,25 @@ namespace ColorGateRush.EditorTools
                 }
             }
 
+            string[] requiredButtonStyleTokens =
+            {
+                "ApplyPrimaryButtonStyle",
+                "ApplyGeneratedButtonStyle",
+                "PrimaryButtonBackgroundColor",
+                "PrimaryButtonBorderColor",
+                "usePrimaryStyle: false",
+                "AttachButtonClickSfx",
+                "ConfigureStaticSelectableTransition"
+            };
+
+            foreach (string token in requiredButtonStyleTokens)
+            {
+                if (!runtimeUiSource.Contains(token))
+                {
+                    throw new InvalidOperationException("Runtime UI must keep procedural primary button style with Settings exceptions: " + token);
+                }
+            }
+
             if (!localizationSource.Contains("스와이프") || !localizationSource.Contains("Swipe left or right"))
             {
                 throw new InvalidOperationException("Rules must describe mobile swipe/tap movement.");
@@ -1274,6 +1294,9 @@ namespace ColorGateRush.EditorTools
                 "Resources.Load<AudioClip>",
                 "ColorgateRush_Menu",
                 "ColorgateRush_Ingame",
+                "PlayUiClick",
+                "PlayUiClickGlobal",
+                "ui_click",
                 "GameSettings.MusicEnabled",
                 "GameSettings.SfxEnabled",
                 "GameSettings.MusicVolume",
@@ -2534,17 +2557,17 @@ namespace ColorGateRush.EditorTools
 
             if (disallowedTexturePaths.Count > 0 || disallowedAudioPaths.Count > 0 || modelGuids.Length > 0 || fontGuids.Length > 0 || prefabGuids.Length > 0)
             {
-                throw new InvalidOperationException("Imported media found under Assets/_Project. Only the approved BGM clips, title screen, and main menu background are allowed: "
-                    + MenuBgmAssetPath + ", " + GameplayBgmAssetPath + ", " + TitleScreenAssetPath + ", " + MainMenuBackgroundAssetPath
+                throw new InvalidOperationException("Imported media found under Assets/_Project. Only the approved BGM clips, title screen, main menu background, and retired unused button texture are allowed: "
+                    + MenuBgmAssetPath + ", " + GameplayBgmAssetPath + ", " + TitleScreenAssetPath + ", " + MainMenuBackgroundAssetPath + ", " + RetiredPrimaryButtonAssetPath
                     + ". Extra textures: " + string.Join(", ", disallowedTexturePaths)
                     + ". Extra audio: " + string.Join(", ", disallowedAudioPaths));
             }
         }
 
-        // Allows only the user-provided title/menu textures that are intentionally bundled through Resources.
+        // Allows only the user-provided UI textures that are intentionally bundled through Resources.
         private static bool IsApprovedProjectTextureAsset(string assetPath)
         {
-            return assetPath == TitleScreenAssetPath || assetPath == MainMenuBackgroundAssetPath;
+            return assetPath == TitleScreenAssetPath || assetPath == MainMenuBackgroundAssetPath || assetPath == RetiredPrimaryButtonAssetPath;
         }
 
         // Allows only the two user-provided BGM clips that are intentionally bundled through Resources.

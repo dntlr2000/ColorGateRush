@@ -17,11 +17,15 @@ namespace ColorGateRush
         private const int SampleRate = 44100;
         private const string MenuMusicResourcePath = "ColorGateRush/Audio/ColorgateRush_Menu";
         private const string GameplayMusicResourcePath = "ColorGateRush/Audio/ColorgateRush_Ingame";
+        private const string UiClickClipKey = "ui_click";
+        private const float MinUiClickInterval = 0.025f;
+        private static ProceduralAudio _activeInstance;
         private AudioSource _sfxSource;
         private AudioSource _musicSource;
         private MusicType _currentMusicType = MusicType.Menu;
         private int _currentMusicTier = -1;
         private bool _musicDucked;
+        private float _lastUiClickRealtime = -10f;
         private AudioClip _menuMusicClip;
         private AudioClip _importedMenuMusicClip;
         private AudioClip _importedGameplayMusicClip;
@@ -33,6 +37,7 @@ namespace ColorGateRush
         // Caches separate audio sources so music loops never stack with one-shot SFX.
         private void Awake()
         {
+            _activeInstance = this;
             _sfxSource = GetComponent<AudioSource>();
             if (_sfxSource == null)
             {
@@ -51,7 +56,21 @@ namespace ColorGateRush
         // Stops active BGM if the systems object is disabled.
         private void OnDisable()
         {
+            if (_activeInstance == this)
+            {
+                _activeInstance = null;
+            }
+
             StopMusic();
+        }
+
+        // Plays the current scene audio system's UI click without requiring RuntimeUi to keep an audio reference.
+        public static void PlayUiClickGlobal()
+        {
+            if (_activeInstance != null)
+            {
+                _activeInstance.PlayUiClick();
+            }
         }
 
         // Starts a loop or short sting for the requested game state without stacking music.
@@ -179,6 +198,25 @@ namespace ColorGateRush
             Invoke(nameof(PlayFinishThirdTone), 0.16f);
         }
 
+        // Plays a short soft procedural click for user-facing button presses.
+        public void PlayUiClick()
+        {
+            if (_sfxSource == null || !GameSettings.SfxEnabled)
+            {
+                return;
+            }
+
+            float now = Time.unscaledTime;
+            if (now - _lastUiClickRealtime < MinUiClickInterval)
+            {
+                return;
+            }
+
+            _lastUiClickRealtime = now;
+            AudioClip clip = GetOrCreateUiClickClip();
+            _sfxSource.PlayOneShot(clip, GameSettings.SfxVolume);
+        }
+
         // Plays the second note in the finish arpeggio.
         private void PlayFinishSecondTone()
         {
@@ -272,6 +310,34 @@ namespace ColorGateRush
             AudioClip clip = AudioClip.Create(key, sampleCount, 1, SampleRate, false);
             clip.SetData(samples, 0);
             _sfxClipCache[key] = clip;
+            return clip;
+        }
+
+        // Reuses the procedural UI click clip so every button press avoids runtime allocation.
+        private AudioClip GetOrCreateUiClickClip()
+        {
+            if (_sfxClipCache.TryGetValue(UiClickClipKey, out AudioClip cached))
+            {
+                return cached;
+            }
+
+            const float duration = 0.055f;
+            const float volume = 0.22f;
+            int sampleCount = Mathf.Max(1, Mathf.CeilToInt(SampleRate * duration));
+            float[] samples = new float[sampleCount];
+            for (int i = 0; i < sampleCount; i++)
+            {
+                float t = i / (float)SampleRate;
+                float normalized = i / (float)sampleCount;
+                float envelope = Mathf.Exp(-normalized * 10f) * Mathf.Min(1f, normalized * 18f);
+                float lowTap = Mathf.Sin(2f * Mathf.PI * 760f * t);
+                float highTap = Mathf.Sin(2f * Mathf.PI * 1380f * t) * 0.38f;
+                samples[i] = (lowTap + highTap) * envelope * volume;
+            }
+
+            AudioClip clip = AudioClip.Create(UiClickClipKey, sampleCount, 1, SampleRate, false);
+            clip.SetData(samples, 0);
+            _sfxClipCache[UiClickClipKey] = clip;
             return clip;
         }
 
