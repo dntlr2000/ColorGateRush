@@ -1,14 +1,14 @@
 # Color Gate Rush
 
-Procedural Unity 6 hyper-casual runner built without downloaded art, models, fonts, prefabs, sprites, or Asset Store packages. The project currently allowlists two user-provided BGM clips and one user-provided main menu background image under `Resources`.
+Procedural Unity 6 hyper-casual runner built without downloaded art, models, fonts, prefabs, sprites, or Asset Store packages. The project currently allowlists two user-provided BGM clips plus user-provided title and main menu images under `Resources`.
 
 ## Flow
 
+- TitleScreen
 - MainMenu
 - StageSelect
 - Rules
 - Settings
-- Playtest Stats
 - Endless Playing
 - Playing
 - Tutorial
@@ -16,15 +16,25 @@ Procedural Unity 6 hyper-casual runner built without downloaded art, models, fon
 - Failed
 - Completed
 
+The app opens on a full-screen title image. Tap/click the title screen to enter Main Menu.
 Main Menu `Start` opens Stage Select. Gameplay starts only after selecting an unlocked stage.
 Main Menu `Endless Mode` starts a finish-free record run that is independent from stage stars and unlocks.
 Main Menu `게임 종료` calls `Application.Quit()` in Android/PC builds, logs safely in the Editor, and shows a WebGL tab-close notice.
 Stage Select lists 30 deterministic stages in a scrollable two-column grid.
+Settings is organized into mobile-friendly General, Language, and Data sections so audio/display options, language selection, and reset actions stay clearly separated with padded content width and grouped volume sliders.
+
+## Localization
+
+- Korean and English runtime UI are supported without the Unity Localization package.
+- Settings has Korean / English selection buttons.
+- The selected language is saved in `CGR_Language` and survives app restart.
+- Changing language refreshes the currently open UI immediately.
+- New player-facing runtime text should be added as a `LocalizationKey` with Korean and English entries before use.
 
 ## Controls
 
-- Keyboard: `A/D` or `Left/Right Arrow`
 - Mobile: horizontal swipe or left/right half-screen tap
+- PC/editor keyboard input remains available for development smoke tests.
 - Pause: HUD button, `ESC`, or `P`
 - Pause shortcuts: `R` retry, `M` main menu
 - Android Back/Escape pauses gameplay and returns submenus to Main Menu.
@@ -43,7 +53,7 @@ Stage Select lists 30 deterministic stages in a scrollable two-column grid.
 - 2 stars require the rounded-up two-thirds point of the 3-star target.
 - 3 stars are tuned as a near-perfect route reward; missing or miscollecting 1-2 key shards can make the cutoff hard to reach.
 - Any clear with at least 1 star unlocks the next stage.
-- Endless Mode has no finish, star targets, or unlock writes; it gets faster over time and failure shows score, distance, best score, best distance, wrong shard chance icons, and failure reason.
+- Endless Mode has no finish, star targets, or unlock writes; it gets faster over time, uses a fresh random seed per run, and failure shows score, distance, best score, best distance, wrong shard chance icons, and failure reason.
 - In both Stage and Endless Mode, collecting the third wrong-color shard ends the run. Stage Mode still clears/unlocks by reaching the finish.
 
 ## Stage Content
@@ -68,8 +78,8 @@ Runtime mesh objects are created with explicit `GameObject` + `MeshFilter` + `Me
 - `VisualTheme` centralizes the candy-neon palette for background, track, hazards, finish, HUD, and VFX.
 - `RuntimeMaterialProvider` centralizes URP-compatible shader/material creation for generated objects.
 - Runtime base materials live under `Assets/_Project/Resources/ColorGateRush/Materials`, so Android/WebGL/PC builds include the limited shader variants actually used by generated objects.
-- Opaque generated meshes use `Universal Render Pipeline/Simple Lit` through small Resources material presets such as `CGR_SimpleLitShard`, `CGR_SimpleLitTrack`, `CGR_SimpleLitObstacle`, and `CGR_SimpleLitFinish` to keep lighting and shadows without pulling in full URP/Lit variants.
-- The player body and color accent use `RuntimeMaterialProvider` player-specific materials based on `CGR_UnlitOpaque` and `CGR_UnlitTransparent`, so player color swaps cannot fall back to null or unsupported shard materials.
+- Opaque generated meshes use `Universal Render Pipeline/Simple Lit` through small Resources material presets such as `CGR_SimpleLitPlayer`, `CGR_SimpleLitShard`, `CGR_SimpleLitTrack`, `CGR_SimpleLitObstacle`, and `CGR_SimpleLitFinish` to keep lighting and shadows without pulling in full URP/Lit variants.
+- The player body uses a player-specific `CGR_SimpleLitPlayer` provider path with shadow casting/receiving enabled. The player color accent remains on `CGR_UnlitTransparent`, so the decorative cue stays build-safe and shadow-free.
 - Transparent panels and ParticleSystem feedback stay on limited `URP/Unlit` materials for build safety.
 - `Universal Render Pipeline/Lit` is not placed in Graphics Settings Always Included Shaders because its variant count can break Android builds.
 - 30 stages cycle through five procedural theme variations without external textures or skyboxes.
@@ -104,11 +114,11 @@ Settings use `CGR_` PlayerPrefs keys:
 
 Reset Local Progress deletes only Color Gate Rush progress keys: unlocked stage, selected stage, best stars, and tutorial seen. Music/SFX and visual settings are preserved.
 
-## Playtest Stats
+## Release Playtesting
 
-The Main Menu has a local-only `플레이테스트 통계` screen for Android/PC test builds. It stores per-stage attempts, clears, fails, quits, best score, best stars, total score, last score, last stars, playtime, and 3-star clears under `CGR_Stats_Stage_{n}_...` keys. Nothing is sent over the network.
+The release candidate no longer exposes an in-game Playtest Stats screen and no longer writes new `CGR_Stats_` telemetry. Playtests use `docs/playtest_checklist.md` plus Validate Build, Validate Runtime Visuals, Balance Report, and Release Readiness Report.
 
-`Reset Playtest Stats` deletes only `CGR_Stats_` keys. It is intentionally separate from Reset Local Progress so testers can clear telemetry without changing stage unlocks or settings.
+Reset Stage Progress and Reset Endless Records are separate Data-section actions. Neither reset removes language, BGM/SFX, camera shake, or color-assist settings.
 
 ## Endless Records
 
@@ -136,16 +146,15 @@ Unity menu:
 - `Tools/Color Gate Rush/Generate Release Readiness Report`
 - `Tools/Color Gate Rush/Apply Visual Theme`
 - `Tools/Color Gate Rush/Reset Local Progress`
-- `Tools/Color Gate Rush/Reset Playtest Stats`
 - `Tools/Color Gate Rush/Reset Endless Records`
 
-Manual QA should verify MainMenu to StageSelect, Endless entry, Quit behavior, Stage unlocks, pause/resume, no automatic restart, row fairness, star targets, Playtest Stats recording/reset, Endless record reset, Music/SFX toggles and sliders, Stage 1 tutorial, and the visual polish checklist for HUD contrast, bottom-right combo badge, track readability, shard/obstacle/gate/finish clarity, mobile-safe VFX, Android pink-material absence, and PC renderer visibility.
+Manual QA should verify MainMenu to StageSelect, Endless entry, Quit behavior, Settings General/Language/Data sections, Stage unlocks, pause/resume, no automatic restart, row fairness, star targets, Endless random seed feel and record reset, Music/SFX toggles and sliders, Stage 1 tutorial, and the visual polish checklist for HUD contrast, bottom-right combo badge, track readability, shard/obstacle/gate/finish clarity, mobile-safe VFX, Android pink-material absence, and PC renderer visibility.
 
 Stage and Endless QA should verify the HUD shows three wrong-shard chance icons, the first two wrong-color shards continue the run, and the third opens the Failed/result screen with the wrong-shard limit reason. Endless QA should also verify speed/difficulty rises without changing `Time.timeScale` and row spacing remains readable as speed increases.
 
 Only the two approved user-provided BGM files under `Assets/_Project/Resources/ColorGateRush/Audio` and the approved main menu background image under `Assets/_Project/Resources/ColorGateRush/Images` are allowed as imported media. SFX remain procedural.
 
-If Android shows pink materials, run `Validate Runtime Visuals`, confirm `Universal Render Pipeline/Lit` is absent from Always Included Shaders, and confirm the Resources material assets exist under `Assets/_Project/Resources/ColorGateRush/Materials`. If the validator reports a null or unsupported material, use the object path, renderer type, slot, material name, and shader name in the error to find the exact generated object; player body/accent renderers must use the player material provider path. If visual depth looks flat, confirm opaque meshes are using the `CGR_SimpleLit*` presets and renderer shadow casting/receiving is enabled. If a PC build hides generated objects, use a Development Build and check the runtime visual self-check log for renderer, mesh, material, collider, camera culling mask, and far clip counts.
+If Android shows pink materials, run `Validate Runtime Visuals`, confirm `Universal Render Pipeline/Lit` is absent from Always Included Shaders, and confirm the Resources material assets exist under `Assets/_Project/Resources/ColorGateRush/Materials`. If the validator reports a null or unsupported material, use the object path, renderer type, slot, material name, and shader name in the error to find the exact generated object. If the player looks flat, confirm the player body uses `CGR_SimpleLitPlayer` and reports `shadowCastingMode=On` and `receiveShadows=True`; the player accent can remain Unlit. If a PC build hides generated objects, use a Development Build and check the runtime visual self-check log for renderer, mesh, material, collider, camera culling mask, and far clip counts.
 
 For Android/WebGL packaging preparation, follow `docs/release_readiness_checklist.md`. It covers Validate Build, Balance Report, Release Readiness Report, APK/AAB usage, keystore safety, WebGL browser checks, and device smoke tests.
 

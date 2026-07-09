@@ -406,7 +406,15 @@ namespace ColorGateRush
             if (renderer != null)
             {
                 ApplyMaterial(renderer, PlayerMaterial(colorId), target.name);
+                ApplyPlayerBodyShadowPolicy(renderer);
             }
+        }
+
+        // Forces the player body to cast and receive shadows even after color/material swaps.
+        private static void ApplyPlayerBodyShadowPolicy(Renderer renderer)
+        {
+            renderer.shadowCastingMode = ShadowCastingMode.On;
+            renderer.receiveShadows = true;
         }
 
         // Applies the active translucent player accent material to an already-created object.
@@ -420,7 +428,7 @@ namespace ColorGateRush
             Renderer renderer = target.GetComponent<Renderer>();
             if (renderer != null)
             {
-                renderer.sharedMaterial = PlayerAccentMaterial(colorId);
+                ApplyMaterial(renderer, PlayerAccentMaterial(colorId), target.name);
             }
         }
 

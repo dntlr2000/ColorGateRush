@@ -40,7 +40,9 @@ The parent agent should:
 - ensure `Assets/_Project` contains no imported texture, audio, model, font, or prefab assets;
 - ensure runtime procedural objects do not use `GameObject.CreatePrimitive` or `AddComponent(string)`;
 - ensure runtime materials go through `RuntimeMaterialProvider` and Resources base material assets, not full URP shader Always Included entries;
-- ensure local playtest telemetry stays PlayerPrefs-only under `CGR_Stats_` and does not use network APIs;
+- ensure runtime UI text goes through `LocalizationManager`/`LocalizationKey` for Korean and English; do not add the Unity Localization package or external fonts;
+- ensure the release candidate does not expose the removed Playtest Stats UI or write new `CGR_Stats_` telemetry;
+- ensure Settings is split into General, Language, and Data sections with language/settings separate from destructive reset actions;
 - ensure Endless records stay PlayerPrefs-only under `CGR_Endless` keys and do not mutate stage stars/unlocks;
 - run compile/build validation when Unity is available.
 
@@ -64,6 +66,7 @@ The final Codex response should include:
 - Add Editor tests for level generation invariants.
 - Add a `BuildAndroid` editor method if Android SDK is installed.
 - Add generated app icon textures through `Texture2D` if publishing is needed.
+- Add optional post-launch analytics only after a separate privacy/storage review.
 
 ## Stage progression QA additions
 
@@ -107,10 +110,10 @@ The final Codex response should include:
 - Confirm gate color/shape changes do not open a center toast and are reflected by the top-left current color/shape chip.
 - Confirm PlayerPrefs keys use the `CGR_` prefix.
 - Confirm Reset Local Progress deletes only `CGR_` keys and never calls `PlayerPrefs.DeleteAll`.
-- Confirm Playtest Stats records attempts, clears, fails, quits, best score, best stars, last score, and last stars only at stage start/end/menu-exit events.
-- Confirm Playtest Stats uses `CGR_Stats_` keys, has no network path, and never runs per-frame saves.
-- Confirm Reset Playtest Stats deletes only `CGR_Stats_` keys and does not change unlocks, best stars, tutorial, or settings.
-- Confirm Reset Endless Records deletes only `CGR_Endless...` keys and does not change unlocks, best stars, tutorial, settings, or playtest stats.
+- Confirm Playtest Stats buttons, panels, and recording hooks are absent from release UI/runtime flow.
+- Confirm Settings exposes General, Language, and Data sections.
+- Confirm Reset Stage Progress and Reset Endless Records are separated and guarded by confirmation panels.
+- Confirm Reset Endless Records deletes only `CGR_Endless...` keys and does not change unlocks, best stars, tutorial, settings, or language.
 - Confirm Endless Mode creates no finish line, shows score/distance/best records, and cleans old generated chunks behind the player.
 - Confirm Stage and Endless HUDs show three wrong-shard chance icons, keep running at 1/3 and 2/3, and end the run at 3/3.
 - Confirm Stage Mode route-aware max includes wrong-shard count state and only invalidates routes that reach the third wrong shard.
@@ -161,6 +164,6 @@ The final Codex response should include:
 - `Tools/Color Gate Rush/Generate Release Readiness Report`: summarize Android/WebGL static readiness, hard failures, warnings, and manual checks without running a build.
 - `Tools/Color Gate Rush/Apply Visual Theme`: apply code-defined visual tone to the open scene.
 - `Tools/Color Gate Rush/Reset Local Progress`: delete only Color Gate Rush progress keys.
-- `Tools/Color Gate Rush/Reset Playtest Stats`: delete only local playtest stat keys.
+- `Tools/Color Gate Rush/Reset Endless Records`: delete only Endless record keys.
 
 Release-candidate sign-off should run Validate Build, Generate Balance Report, Generate Release Readiness Report, and Reset Local Progress manually in the Unity Editor before packaging. Follow `docs/release_readiness_checklist.md` for Android/WebGL build preparation.

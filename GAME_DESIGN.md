@@ -10,35 +10,43 @@
 - **단순 충돌 규칙**: collect, gate, obstacle, finish 네 가지 trigger만 있으면 됩니다.
 - **절차 생성 친화적**: 트랙, 샤드, 게이트, 장애물 모두 규칙 기반 배치가 가능합니다.
 - **외부 다운로드 에셋 불필요**: gameplay는 구, 큐브, 캡슐, 파티클, 머티리얼만으로 구성합니다. 메인 메뉴만 승인된 사용자 제공 배경 이미지를 `Resources`에서 사용합니다.
-- **테스트 쉬움**: 에디터에서 WASD/Arrow, 모바일에서 swipe/tap으로 검증 가능합니다.
+- **테스트 쉬움**: 모바일 기준 swipe/tap 조작을 중심으로 검증하며, PC 키보드 입력은 개발용 보조 입력으로만 유지합니다.
 
 ## 3. Core Loop
 
-1. Player starts from Main Menu.
-2. Main Menu Start opens Stage Select instead of starting a run.
-3. Main Menu Endless Mode starts an independent record run.
-4. Main Menu Quit requests application exit on Android/PC builds; Editor/WebGL are handled safely.
-5. Selecting an unlocked stage starts that stage.
-6. Player moves forward during Playing, with higher campaign speed paired with wider row spacing for preserved reaction time.
-7. Stage 1 first entry shows a short Korean tutorial once.
-8. Player can pause during Playing and resume the same run.
-9. Same-color shard increases score and combo with floating score feedback.
-10. Stage Mode wrong-color shards use the same three-chance failure rule as Endless Mode.
-11. Gate changes player color and current target shape.
-12. Obstacle causes fail or heavy penalty.
-13. Finish line clears finite stages and locks in the current score.
-14. Endless Mode has no finish, stars, or unlocks; it keeps getting faster and harder until failure and saves best score/distance.
-15. Result is shown until the player explicitly chooses Retry, Stage Select, Main Menu, or Next Stage.
-16. Playtest Stats can be opened from Main Menu to review local attempts, clears, fails, quits, best scores, and best stars without affecting progression.
+1. Player starts on a full-screen title image.
+2. Tapping/clicking the title screen opens Main Menu.
+3. Main Menu Start opens Stage Select instead of starting a run.
+4. Main Menu Endless Mode starts an independent record run.
+5. Main Menu Quit requests application exit on Android/PC builds; Editor/WebGL are handled safely.
+6. Selecting an unlocked stage starts that stage.
+7. Player moves forward during Playing, with higher campaign speed paired with wider row spacing for preserved reaction time.
+8. Stage 1 first entry shows a short localized tutorial once.
+9. Player can pause during Playing and resume the same run.
+10. Same-color shard increases score and combo with floating score feedback.
+11. Stage Mode wrong-color shards use the same three-chance failure rule as Endless Mode.
+12. Gate changes player color and current target shape.
+13. Obstacle causes fail or heavy penalty.
+14. Finish line clears finite stages and locks in the current score.
+15. Endless Mode has no finish, stars, or unlocks; it keeps getting faster and harder until failure and saves best score/distance.
+16. Result is shown until the player explicitly chooses Retry, Stage Select, Main Menu, or Next Stage.
+17. Release playtests use the manual checklist; the in-game Playtest Stats screen and `CGR_Stats_` telemetry are not exposed in the release candidate.
+
+## Localization
+
+- Runtime UI supports Korean and English through the lightweight code-based `LocalizationManager`.
+- The selected language is stored in `CGR_Language`; Reset Progress does not delete this setting.
+- Settings exposes Korean / English buttons and refreshes the currently open UI immediately when the language changes.
+- Runtime UI text should be added through `LocalizationKey` before it is displayed. Do not add the Unity Localization package, external fonts, or downloaded localization assets.
+- Validator checks both dictionaries for missing keys and mismatched format placeholders.
 
 ## 4. Controls
 
-- Desktop test: `A/LeftArrow` = left lane, `D/RightArrow` = right lane.
+- Mobile primary: horizontal swipe or left/right half-screen tap changes lane.
+- Desktop test fallback: left/right keys remain available for editor and PC smoke tests.
 - Pause: `ESC` or `P` toggles pause/resume during gameplay.
 - Pause shortcuts: `R` retries the current stage, `M` returns to Main Menu.
 - Android Back/Escape: gameplay pauses; submenus return to Main Menu.
-- Mobile: horizontal swipe changes lane.
-- Optional alternate: left/right half-screen tap.
 - UI buttons are ignored by lane-touch input through EventSystem checks.
 
 ## 5. Objects
@@ -76,15 +84,14 @@
 - Settings include Music, SFX, fine Music/SFX volume sliders, Camera Shake, and Color Assist controls saved with `CGR_` PlayerPrefs keys.
 - SFX remain procedural for now; any future third-party or replacement audio must be tracked separately before inclusion.
 
-## 6.2 Playtest Readiness
+## 6.2 Release Playtest Readiness
 
-- Stage starts increment a local attempt counter.
-- Completed runs record clears, final score, stars, best score, best stars, and 3-star count.
-- Failed runs record fails and final score without changing stage progression.
-- Pause-to-menu, pause-to-stage-select, and pause retry exits record as quits so they are distinguishable from obstacle failures.
-- Playtest stats use only `CGR_Stats_` PlayerPrefs keys and are never transmitted externally.
-- Reset Progress and Reset Playtest Stats are separate actions.
-- Endless records are separate from stage progress and use `CGR_Endless...` PlayerPrefs keys.
+- The release candidate removes the in-game Playtest Stats screen and no longer writes new `CGR_Stats_` telemetry.
+- Playtesting is driven by `docs/playtest_checklist.md`, Balance Report, Validate Build, Validate Runtime Visuals, and Release Readiness Report.
+- Settings is split into General, Language, and Data sections so language/audio options are visually separate from destructive reset actions.
+- Reset Stage Progress affects only stage unlock/star/selection progress.
+- Reset Endless Records affects only `CGR_Endless...` record keys.
+- Language, BGM/SFX, camera shake, and color-assist settings survive progress resets.
 
 ## 6.3 Endless Mode MVP
 
@@ -99,7 +106,8 @@
 - Generation uses rolling rows/chunks ahead of the player and cleans chunks behind the player so objects do not accumulate forever.
 - Fair row invariant still applies: no all-obstacle row, no all-off-color row, no mixed all-unsafe row, and at least one safe option.
 - Saved records: `CGR_EndlessBestScore`, `CGR_EndlessBestDistance`, `CGR_EndlessBestRows`, `CGR_EndlessAttempts`, `CGR_EndlessTotalRuns`.
-- Reset Endless Records is separate from Reset Local Progress and Reset Playtest Stats.
+- Each Endless run receives a fresh per-run seed while pause/resume keeps the same run sequence.
+- Reset Endless Records is separate from Reset Local Progress.
 
 ## 7. Level Generation Rules
 
@@ -173,7 +181,7 @@
 - Stage 21-30 are advanced stages with the shortest gate spacing and strictest 3-star margins.
 - Clearing a stage awards at least 1 star.
 - Score targets award 2 or 3 stars.
-- `StageScoreAnalyzer` estimates a route-aware maximum score from generated row/lane data, combo, gate score, row-spacing-based lane movement, and off-color lanes treated as invalid fail routes.
+- `StageScoreAnalyzer` estimates a route-aware maximum score from generated row/lane data, combo, gate score, row-spacing-based lane movement, and wrong-shard count state; routes fail only when the third wrong shard is reached.
 - A row is one decision; even if multiple matching shards appear in that row, the analyzer counts at most one lane choice and at most one shard pickup.
 - Balance reports compare naive matching-shard score against route-aware max score so impossible 3-star targets are caught.
 - 2-star targets are always the rounded-up two-thirds point of the 3-star target.
@@ -217,7 +225,7 @@
 
 - Validate Build, Generate Balance Report, and Generate Release Readiness Report must pass before packaging.
 - Stage 1-30 should be manually sampled for unlock, score, pause, retry, and result-screen regressions.
-- No unapproved external art/audio/model/font/prefab assets are allowed under `Assets/_Project`; the allowlist contains the approved BGM clips and `Resources/ColorGateRush/Images/MainMenuBackground.png`.
+- No unapproved external art/audio/model/font/prefab assets are allowed under `Assets/_Project`; the allowlist contains the approved BGM clips, `Resources/ColorGateRush/Images/TitleScreen.png`, and `Resources/ColorGateRush/Images/MainMenuBackground.png`.
 - Android and WebGL builds are manual Unity Editor tasks; automation maintains only static checks, validators, and checklists.
 - APK is for local Android testing, AAB is for Google Play submission, and keystore/signing files stay outside the repository.
 - WebGL testing must include browser persistence, resize behavior, first-input audio unlock, and keyboard/mouse/touch checks.

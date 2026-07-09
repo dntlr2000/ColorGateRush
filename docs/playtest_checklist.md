@@ -9,7 +9,7 @@ This checklist is for gameplay and build-readiness playtests with the two approv
 3. Run `Tools/Color Gate Rush/Validate Runtime Visuals`.
 4. Run `Tools/Color Gate Rush/Generate Balance Report`.
 5. Run `Tools/Color Gate Rush/Generate Release Readiness Report`.
-6. Optional clean telemetry: run `Tools/Color Gate Rush/Reset Playtest Stats`.
+6. Optional before Endless retests: run `Tools/Color Gate Rush/Reset Endless Records`.
 
 ## Release Candidate Build Settings Review
 
@@ -24,24 +24,35 @@ This checklist is for gameplay and build-readiness playtests with the two approv
 
 1. Build a local APK from Unity Build Profiles.
 2. Install on a physical portrait Android device.
-3. Confirm MainMenu Start opens StageSelect.
-4. Confirm MainMenu Endless Mode starts immediately and shows score/distance/best records, wrong-shard chance icons, and Speed x value.
-5. Confirm MainMenu Quit exits only from the explicit button in Android/PC builds.
-6. Start Stage 1 and confirm the stage-start hint disappears after a few seconds.
-7. Confirm swipe and left/right half-screen tap change lanes without triggering UI buttons.
-8. Confirm Pause button is easy to hit and does not overlap the HUD or notch area.
-9. Confirm Failed/Completed screens never auto-restart.
-10. Confirm clearing Stage 1 with at least 1 star unlocks Stage 2.
-11. Open Playtest Stats and confirm Attempts/Clears/Fails/Best Score/Last Score update.
-12. Check Logcat for no `Can't add component because 'BoxCollider' doesn't exist!` and no pink procedural materials.
+3. Confirm the app opens on the title image.
+4. Tap the title screen and confirm MainMenu appears.
+5. Confirm MainMenu Start opens StageSelect.
+6. Confirm MainMenu Endless Mode starts immediately and shows score/distance/best records, wrong-shard chance icons, and Speed x value.
+7. Confirm MainMenu Quit exits only from the explicit button in Android/PC builds.
+8. Start Stage 1 and confirm the stage-start hint disappears after a few seconds.
+9. Confirm swipe and left/right half-screen tap change lanes without triggering UI buttons.
+10. Confirm Pause button is easy to hit and does not overlap the HUD or notch area.
+11. Confirm Failed/Completed screens never auto-restart.
+12. Confirm clearing Stage 1 with at least 1 star unlocks Stage 2.
+13. Open Settings and confirm General, Language, and Data sections are separated.
+14. Check Logcat for no `Can't add component because 'BoxCollider' doesn't exist!` and no pink procedural materials.
+
+## Language Smoke Test
+
+1. Start in Korean and verify Main Menu, Stage Select, Rules, Settings, HUD, Pause, Result, and Endless text.
+2. Open Settings, switch to English, and confirm the currently open Settings screen updates immediately.
+3. Revisit Main Menu, Stage Select, Rules, Stage HUD, Endless HUD, Pause, Failed, and Completed screens in English.
+4. Restart the app and confirm English persists through `CGR_Language`.
+5. Switch back to Korean and confirm the same screens return to Korean without resetting progress.
+6. Confirm Reset Progress does not reset the selected language.
 
 ## PC Build Smoke Test
 
-1. Start from MainMenu and go to StageSelect.
+1. Start from the title image, tap/click into MainMenu, and go to StageSelect.
 2. Start Stage 1 and verify player, track, shards, obstacles, gates, finish, VFX, and HUD render.
 3. Test `A/D`, arrow keys, `ESC/P`, `R`, and `M`.
 4. Clear and fail at least one stage, then verify result buttons.
-5. Restart the build and confirm progress and Playtest Stats persist locally.
+5. Restart the build and confirm stage progress, language, and audio/display settings persist locally.
 6. Start Endless Mode, fail intentionally by obstacle and by three wrong-color shards, and confirm best score/distance persist after restarting the build.
 
 ## Stage Sampling
@@ -51,6 +62,7 @@ This checklist is for gameplay and build-readiness playtests with the two approv
 - Stage 20: advanced gate frequency and route readability.
 - Stage 30: end-campaign strict 3-star target and visual clarity.
 - Endless 30 seconds: confirm the early speed ramp is readable and wrong-shard chances are clear.
+- Endless retry variation: start Endless three times and confirm the early rows do not feel like a fixed seed replay.
 - Endless 60 seconds: confirm obstacle/off-color pressure and gate frequency feel higher without unfair rows.
 - Endless 90 seconds: confirm high-speed row spacing remains playable and no object buildup is visible.
 - Endless 2+ minutes: check rolling generation, pause, retry, MainMenu return, and no obvious memory/performance growth.
@@ -59,14 +71,14 @@ This checklist is for gameplay and build-readiness playtests with the two approv
 - Combo HUD regression: confirm combo appears only as the bottom-right `xN` badge and never as a center toast.
 - Gate HUD regression: confirm color/shape changes update the top-left chip/label and never open a center toast.
 
-## Save, Unlock, And Stats
+## Save, Unlock, And Data
 
 - Reset Local Progress affects stage unlocks, best stars, selected stage, and tutorial seen.
-- Reset Playtest Stats affects only `CGR_Stats_` counters.
+- Settings Data separates Reset Stage Progress from Reset Endless Records and both show confirmation panels.
+- Reset Stage Progress does not reset language, BGM/SFX volume, camera shake, color assist, or Endless records.
 - Failing awards 0 stars and does not unlock the next stage.
 - Clearing awards at least 1 star and unlocks the next stage.
 - Best stars and best score do not downgrade.
-- Pause to MainMenu/StageSelect or pause retry records a quit, not a fail.
 - Endless records use `CGR_Endless...` keys and do not affect Stage unlocks or stars.
 - Reset Endless Records affects only Endless best score/distance/rows/attempts/runs.
 

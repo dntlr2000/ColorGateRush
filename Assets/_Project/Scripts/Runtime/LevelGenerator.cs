@@ -22,6 +22,7 @@ namespace ColorGateRush
         private float _endlessNextRowZ;
         private float _endlessNextTrackCenterZ;
         private float _endlessNextGateZ;
+        private Random.State _endlessRandomState;
 
         public LevelGenerationReport LastReport => _lastReport;
         public int EndlessGeneratedRows => _endlessGeneratedRows;
@@ -105,6 +106,7 @@ namespace ColorGateRush
             ClearExistingLevel();
             VisualTheme.SetActiveThemeIndex(2);
             Random.InitState(config.Seed);
+            _endlessRandomState = Random.state;
             _trackLength = config.GenerateAheadDistance + 180f;
             _lastReport = new LevelGenerationReport(0, config.Seed);
             _endlessActive = true;
@@ -148,30 +150,40 @@ namespace ColorGateRush
             }
 
             float targetZ = playerZ + config.GenerateAheadDistance;
-            while (_endlessNextTrackCenterZ <= targetZ)
+            Random.State previousRandomState = Random.state;
+            Random.state = _endlessRandomState;
+            try
             {
-                CreateEndlessTrackSegment(_endlessNextTrackIndex, _endlessNextTrackCenterZ);
-                _endlessNextTrackIndex++;
-                _endlessNextTrackCenterZ += GameConstants.SegmentLength;
-            }
+                while (_endlessNextTrackCenterZ <= targetZ)
+                {
+                    CreateEndlessTrackSegment(_endlessNextTrackIndex, _endlessNextTrackCenterZ);
+                    _endlessNextTrackIndex++;
+                    _endlessNextTrackCenterZ += GameConstants.SegmentLength;
+                }
 
-            while (_endlessNextGateZ <= targetZ)
-            {
-                StageConfig gateStage = BuildEndlessStageConfig(config, _endlessNextGateZ, elapsedTime);
-                ColorId targetColor = (ColorId)((config.Seed + _endlessNextGateIndex + 1) % gateStage.AvailableColorCount);
-                CreateEndlessGate(_endlessNextGateIndex, _endlessNextGateZ, targetColor);
-                _endlessGatePlans.Add(new GatePlan(_endlessNextGateIndex, _endlessNextGateZ, targetColor));
-                _endlessNextGateIndex++;
-                _endlessNextGateZ += config.GateInterval(elapsedTime, _endlessNextGateZ);
-            }
+                while (_endlessNextGateZ <= targetZ)
+                {
+                    StageConfig gateStage = BuildEndlessStageConfig(config, _endlessNextGateZ, elapsedTime);
+                    ColorId targetColor = (ColorId)((config.Seed + _endlessNextGateIndex + 1) % gateStage.AvailableColorCount);
+                    CreateEndlessGate(_endlessNextGateIndex, _endlessNextGateZ, targetColor);
+                    _endlessGatePlans.Add(new GatePlan(_endlessNextGateIndex, _endlessNextGateZ, targetColor));
+                    _endlessNextGateIndex++;
+                    _endlessNextGateZ += config.GateInterval(elapsedTime, _endlessNextGateZ);
+                }
 
-            while (_endlessNextRowZ <= targetZ)
+                while (_endlessNextRowZ <= targetZ)
+                {
+                    StageConfig rowStage = BuildEndlessStageConfig(config, _endlessNextRowZ, elapsedTime);
+                    CreateEndlessRow(rowStage, _endlessNextRowIndex, _endlessNextRowZ);
+                    _endlessNextRowIndex++;
+                    _endlessGeneratedRows++;
+                    _endlessNextRowZ += config.RowSpacing(elapsedTime, _endlessNextRowZ);
+                }
+            }
+            finally
             {
-                StageConfig rowStage = BuildEndlessStageConfig(config, _endlessNextRowZ, elapsedTime);
-                CreateEndlessRow(rowStage, _endlessNextRowIndex, _endlessNextRowZ);
-                _endlessNextRowIndex++;
-                _endlessGeneratedRows++;
-                _endlessNextRowZ += config.RowSpacing(elapsedTime, _endlessNextRowZ);
+                _endlessRandomState = Random.state;
+                Random.state = previousRandomState;
             }
 
             CleanupEndlessItems(playerZ - config.CleanupDistance);

@@ -2,7 +2,16 @@
 
 ## Hard rule
 
-No downloaded art, font, model, prefab, video, or paid/free Asset Store package is required for the MVP. The current allowlist contains two user-provided BGM clips and one user-provided main menu background image bundled through `Resources`.
+No downloaded art, font, model, prefab, video, or paid/free Asset Store package is required for the MVP. The current allowlist contains two user-provided BGM clips plus user-provided title and main menu images bundled through `Resources`.
+
+## Runtime UI Localization
+
+- Localization is code-based and uses `Language`, `LocalizationKey`, `LocalizationManager`, and generated uGUI `LocalizedText` components.
+- Supported languages are Korean and English.
+- The selected language is stored in `CGR_Language`.
+- The Unity Localization package, downloaded fonts, and external localization assets are not used.
+- Player-facing runtime text must have Korean and English entries before it is wired into UI.
+- Format placeholders such as `{0}` must match between languages; `BuildValidator` treats mismatches as hard failures.
 
 ## Geometry
 
@@ -15,6 +24,7 @@ No downloaded art, font, model, prefab, video, or paid/free Asset Store package 
 | Obstacle | Cube + visual details | Trigger collider plus non-colliding warning stripes/spikes |
 | Track | Cube segments | Slabs plus visual-only rails, separators, edge glow, rhythm stripes |
 | Background | Cubes | Minimal side glow panels and horizon accents; no large backdrop wall panels |
+| Title screen | Approved user-provided PNG | `Assets/_Project/Resources/ColorGateRush/Images/TitleScreen.png`; used only before Main Menu |
 | Main menu background | Approved user-provided PNG | `Assets/_Project/Resources/ColorGateRush/Images/MainMenuBackground.png`; used only behind Main Menu UI |
 | Finish | Cube trigger + arch/checkers | Clear endpoint with primitive checker strip |
 | Player accent | Color-specific primitive shape | Non-colliding current color/shape accent near the player |
@@ -29,9 +39,10 @@ Use code-created material instances cloned from project-owned base materials thr
 3. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_SimpleLitTrack.mat`
 4. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_SimpleLitObstacle.mat`
 5. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_SimpleLitFinish.mat`
-6. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_UnlitOpaque.mat`
-7. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_UnlitTransparent.mat`
-8. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_ParticleUnlit.mat`
+6. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_SimpleLitPlayer.mat`
+7. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_UnlitOpaque.mat`
+8. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_UnlitTransparent.mat`
+9. `Assets/_Project/Resources/ColorGateRush/Materials/CGR_ParticleUnlit.mat`
 
 These material assets reference only limited URP shader variants:
 
@@ -39,7 +50,7 @@ These material assets reference only limited URP shader variants:
 - `Universal Render Pipeline/Unlit` for transparent panels and low-risk fallback geometry.
 - `Universal Render Pipeline/Particles/Unlit` for ParticleSystem feedback.
 
-Opaque material presets are split by use: shard materials are glossier, the player body uses the player-specific `CGR_UnlitOpaque` provider path for build-safe color swaps, track materials are calmer and lower smoothness, obstacle materials are heavier and more matte, and finish materials are brighter with a small warm emission.
+Opaque material presets are split by use: the player body uses `CGR_SimpleLitPlayer` so it remains lit, opaque, and shadow-capable during color swaps; shard materials are glossier, track materials are calmer and lower smoothness, obstacle materials are heavier and more matte, and finish materials are brighter with a small warm emission.
 
 Palette:
 
@@ -55,7 +66,7 @@ Palette:
 
 Required URP shaders are included through Resources material asset references, not by adding full URP shaders to Graphics Settings Always Included Shaders. `Universal Render Pipeline/Lit` must not be added to Always Included Shaders because it can generate too many Android shader variants. Runtime gameplay code should not scatter direct shader lookup calls outside `RuntimeMaterialProvider`; provider fallback lookup exists only for diagnostics when the Resources material assets are missing.
 
-Opaque generated renderers explicitly cast and receive shadows. Transparent panels, glows, and particles do not cast shadows. Track polish adds visual-only lane sheen strips and accent geometry; these must never add gameplay collision.
+Opaque generated renderers explicitly cast and receive shadows. The player body must keep `shadowCastingMode=On` and `receiveShadows=true`; player accents, transparent panels, glows, and particles do not cast shadows. Track polish adds visual-only lane sheen strips and accent geometry; these must never add gameplay collision.
 
 If a later polish pass needs manual shader variant control, use a ShaderVariantCollection containing only the exact variants used by the game. Do not include the entire URP/Lit shader.
 
@@ -133,8 +144,10 @@ Generate a Canvas and basic text at runtime:
 - Top-left HUD contrast panel with text shadow
 - Theme-driven menu/pause/result panels and accent buttons
 - Pause button anchored to the screen top-right
-- Settings screen for Music, draggable Music Volume, SFX, draggable SFX Volume, Camera Shake, Color Assist, and guarded Reset Progress
-- Local-only Playtest Stats screen with guarded Reset Playtest Stats
+- Settings screen split into General, Language, and Data sections:
+  - General: Music, draggable Music Volume, SFX, draggable SFX Volume, Camera Shake, Color Assist
+  - Language: Korean / English
+  - Data: guarded Reset Stage Progress and guarded Reset Endless Records
 - Stage 1 first-run tutorial panel
 - State/result message
 - Short stage-start toast that auto-hides after a few seconds and does not change game state

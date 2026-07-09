@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
@@ -9,11 +10,11 @@ namespace ColorGateRush
     {
         private enum GameState
         {
+            Title,
             MainMenu,
             StageSelect,
             Rules,
             Settings,
-            PlaytestStats,
             Tutorial,
             Playing,
             Paused,
@@ -31,7 +32,7 @@ namespace ColorGateRush
 
         [SerializeField] private int seed = 12345;
 
-        private GameState _state = GameState.MainMenu;
+        private GameState _state = GameState.Title;
         private GameMode _mode = GameMode.Stage;
         private LevelGenerator _levelGenerator;
         private RuntimeUi _ui;
@@ -42,9 +43,8 @@ namespace ColorGateRush
         private int _score;
         private int _combo;
         private LaneRunnerController _runner;
-        private float _runStartedAt;
-        private bool _runStatsOpen;
-        private readonly EndlessRunConfig _endlessConfig = EndlessRunConfig.CreateDefault();
+        private readonly EndlessRunConfig _baseEndlessConfig = EndlessRunConfig.CreateDefault();
+        private EndlessRunConfig _activeEndlessConfig;
         private float _endlessDistance;
         private float _endlessElapsedTime;
         private float _endlessSpeedMultiplier = 1f;
@@ -84,8 +84,10 @@ namespace ColorGateRush
             }
 
             _stageManager = new StageManager();
+            _activeEndlessConfig = _baseEndlessConfig;
             _currentStage = _stageManager.GetStageConfig(_stageManager.SelectedStageIndex);
             _ui.Configure(
+                ReturnToMainMenu,
                 ShowStageSelect,
                 ShowStageSelect,
                 ShowRules,
@@ -104,18 +106,16 @@ namespace ColorGateRush
                 ToggleCameraShake,
                 ToggleColorAssist,
                 ResetLocalProgress,
-                ShowPlaytestStats,
-                ResetPlaytestStats,
                 StartEndlessRun,
                 RequestQuit,
                 ResetEndlessRecords,
                 DismissTutorial);
         }
 
-        // Starts in the main menu instead of immediately running gameplay.
+        // Starts on the title screen instead of immediately showing the main menu.
         private void Start()
         {
-            ReturnToMainMenu();
+            ShowTitleScreen();
         }
 
         // Routes explicit keyboard commands for pause, resume, retry, and menu navigation.
@@ -142,7 +142,7 @@ namespace ColorGateRush
             {
                 HandleRestartInput();
             }
-            else if ((_state == GameState.Rules || _state == GameState.Settings || _state == GameState.PlaytestStats) && WasBackPressed())
+            else if ((_state == GameState.Rules || _state == GameState.Settings) && WasBackPressed())
             {
                 ReturnToMainMenu();
             }
@@ -176,7 +176,6 @@ namespace ColorGateRush
         {
             CancelInvoke();
             RestoreTimeScale();
-            RecordRunQuitIfOpen(PlaytestExitReason.Restarted);
             _mode = GameMode.Stage;
             ResetEndlessRuntimeState();
             _currentStage = stage;
@@ -186,7 +185,6 @@ namespace ColorGateRush
             _wrongShardCount = 0;
             _state = GameState.Playing;
             _runner = _levelGenerator.ClearAndGenerate(this, stage);
-            BeginPlaytestAttempt(stage);
             _audio.PlayMusic(MusicType.Gameplay, stage.StageIndex);
             _ui.ShowPlayingHud(stage, _score, _combo, _runner.CurrentColor, seed, _wrongShardCount, GameConstants.MaxWrongShardCount);
             _ui.ShowStageStartHint(stage);
@@ -198,9 +196,9 @@ namespace ColorGateRush
         {
             CancelInvoke();
             RestoreTimeScale();
-            RecordRunQuitIfOpen(PlaytestExitReason.Restarted);
             _mode = GameMode.Endless;
-            seed = _endlessConfig.Seed;
+            _activeEndlessConfig = _baseEndlessConfig.WithSeed(CreateEndlessRunSeed());
+            seed = _activeEndlessConfig.Seed;
             _score = 0;
             _combo = 0;
             _endlessDistance = 0f;
@@ -209,7 +207,7 @@ namespace ColorGateRush
             _wrongShardCount = 0;
             _lastEndlessDistanceHud = -1;
             _state = GameState.Playing;
-            _runner = _levelGenerator.BeginEndless(this, _endlessConfig);
+            _runner = _levelGenerator.BeginEndless(this, _activeEndlessConfig);
             EndlessRecords.RecordAttempt();
             _audio.PlayMusic(MusicType.Gameplay, MusicStageIndex());
             _ui.ShowEndlessHud(
@@ -221,7 +219,7 @@ namespace ColorGateRush
                 EndlessRecords.BestDistance,
                 seed,
                 _wrongShardCount,
-                _endlessConfig.WrongShardLimit,
+                _activeEndlessConfig.WrongShardLimit,
                 _endlessSpeedMultiplier);
             _ui.ShowEndlessStartHint();
         }
@@ -283,7 +281,11 @@ namespace ColorGateRush
             runner.SetColor(gate.TargetColor);
             _score += GameConstants.GateScore;
             ProceduralFactory.GateBurst(runner.transform.position + Vector3.up * 0.8f, GameConstants.ToUnityColor(gate.TargetColor));
-            ProceduralFactory.FloatingText(runner.transform.position + Vector3.up * 1.3f, "색상 변경! " + GameConstants.ShapeName(gate.TargetColor), GameConstants.ToUnityColor(gate.TargetColor));
+            ColorVisualProfile targetProfile = GameConstants.GetVisualProfile(gate.TargetColor);
+            ProceduralFactory.FloatingText(
+                runner.transform.position + Vector3.up * 1.3f,
+                LocalizationManager.T(LocalizationKey.GateChangedFloating, LocalizationManager.ShapeName(targetProfile.ShapeType)),
+                GameConstants.ToUnityColor(gate.TargetColor));
             _audio.PlayGate();
             UpdateHud();
         }
@@ -305,7 +307,7 @@ namespace ColorGateRush
                 if (runner != null)
                 {
                     ProceduralFactory.FailBurst(runner.transform.position + Vector3.up * 0.5f);
-                    ProceduralFactory.FloatingText(runner.transform.position + Vector3.up * 1.1f, "실패!", Color.red);
+                    ProceduralFactory.FloatingText(runner.transform.position + Vector3.up * 1.1f, LocalizationManager.T(LocalizationKey.FailedFloating), Color.red);
                 }
 
                 ShakeCamera(0.18f, 0.22f);
@@ -341,7 +343,9 @@ namespace ColorGateRush
                 ProceduralFactory.FailBurst(feedbackPosition);
                 ProceduralFactory.FloatingText(
                     feedbackPosition + Vector3.up * 0.6f,
-                    failReason == StageFailReason.WrongShardLimit ? "다른 색 3회!" : "실패!",
+                    failReason == StageFailReason.WrongShardLimit
+                        ? LocalizationManager.T(LocalizationKey.WrongLimitFloating)
+                        : LocalizationManager.T(LocalizationKey.FailedFloating),
                     Color.red);
                 ShakeCamera(failReason == StageFailReason.WrongShardLimit ? 0.14f : 0.18f, 0.22f);
                 _audio.PlayWrong();
@@ -350,7 +354,6 @@ namespace ColorGateRush
             _audio.PlayMusic(MusicType.Failed, MusicStageIndex());
             UpdateHud();
             _lastStageResult = _stageManager.CreateFailedResult(_currentStage, _score, failReason);
-            RecordRunFailed(failReason, _wrongShardCount);
             _ui.ShowResult(false, _currentStage, _lastStageResult, _stageManager.IsStageUnlocked(_currentStage.StageIndex + 1));
         }
 
@@ -368,12 +371,11 @@ namespace ColorGateRush
 
             Vector3 burstPosition = runner != null ? runner.transform.position + Vector3.up : transform.position;
             ProceduralFactory.FinishBurst(burstPosition);
-            ProceduralFactory.FloatingText(burstPosition + Vector3.up * 0.75f, "클리어!", Color.white);
+            ProceduralFactory.FloatingText(burstPosition + Vector3.up * 0.75f, LocalizationManager.T(LocalizationKey.ClearFloating), Color.white);
             ShakeCamera(0.10f, 0.18f);
             _audio.PlayMusic(MusicType.Completed, MusicStageIndex());
             UpdateHud();
             _lastStageResult = _stageManager.SaveStageResult(_currentStage, _score);
-            RecordRunCompleted(_lastStageResult);
             _ui.ShowResult(true, _currentStage, _lastStageResult, _stageManager.IsStageUnlocked(_currentStage.StageIndex + 1));
 
         }
@@ -383,7 +385,6 @@ namespace ColorGateRush
         {
             CancelInvoke();
             RestoreTimeScale();
-            RecordRunQuitIfOpen(PlaytestExitReason.QuitToStageSelect);
             _mode = GameMode.Stage;
             ResetEndlessRuntimeState();
             _state = GameState.StageSelect;
@@ -414,17 +415,6 @@ namespace ColorGateRush
             _ui.ShowSettings();
         }
 
-        // Opens the local-only playtest stats panel without mutating stage progress.
-        private void ShowPlaytestStats()
-        {
-            CancelInvoke();
-            RestoreTimeScale();
-            _state = GameState.PlaytestStats;
-            ClearCurrentLevel();
-            _audio.PlayMusic(MusicType.Menu);
-            _ui.ShowPlaytestStats(StageManager.TotalStageCount);
-        }
-
         // Restarts the current stage from result or pause screens.
         private void RestartCurrentRun()
         {
@@ -442,13 +432,25 @@ namespace ColorGateRush
         {
             CancelInvoke();
             RestoreTimeScale();
-            RecordRunQuitIfOpen(PlaytestExitReason.QuitToMainMenu);
             _mode = GameMode.Stage;
             ResetEndlessRuntimeState();
             _state = GameState.MainMenu;
             ClearCurrentLevel();
             _audio.PlayMusic(MusicType.Menu);
             _ui.ShowMainMenu();
+        }
+
+        // Shows the tap-to-start title screen while keeping gameplay stopped.
+        private void ShowTitleScreen()
+        {
+            CancelInvoke();
+            RestoreTimeScale();
+            _mode = GameMode.Stage;
+            ResetEndlessRuntimeState();
+            _state = GameState.Title;
+            ClearCurrentLevel();
+            _audio.PlayMusic(MusicType.Menu);
+            _ui.ShowTitleScreen();
         }
 
         // Toggles legacy sound playback and keeps split music/SFX settings in sync for old saves.
@@ -525,14 +527,7 @@ namespace ColorGateRush
             _ui.ShowSettings();
         }
 
-        // Clears only CGR_Stats_ playtest counters and refreshes the stats panel.
-        private void ResetPlaytestStats()
-        {
-            PlaytestStats.ResetAll(StageManager.TotalStageCount);
-            _ui.ShowPlaytestStats(StageManager.TotalStageCount);
-        }
-
-        // Clears only Endless record keys and keeps stage progress, settings, and playtest stats intact.
+        // Clears only Endless record keys and keeps stage progress and settings intact.
         private void ResetEndlessRecords()
         {
             EndlessRecords.Reset();
@@ -583,7 +578,7 @@ namespace ColorGateRush
                     EndlessRecords.BestDistance,
                     seed,
                     _wrongShardCount,
-                    _endlessConfig.WrongShardLimit,
+                    _activeEndlessConfig.WrongShardLimit,
                     _endlessSpeedMultiplier);
             }
             else
@@ -621,7 +616,7 @@ namespace ColorGateRush
             _audio.SetMusicDucked(false);
             ColorId color = _runner != null ? _runner.CurrentColor : ColorId.Cyan;
             _ui.ShowPlayingHud(_currentStage, _score, _combo, color, seed, _wrongShardCount, GameConstants.MaxWrongShardCount);
-            _ui.ShowMessage("같은 색/모양 샤드를 모으세요");
+            _ui.ShowMessage(LocalizationManager.T(LocalizationKey.MatchingShardHint));
         }
 
         // Starts an unlocked stage and persists it as the selected stage.
@@ -686,6 +681,20 @@ namespace ColorGateRush
             _endlessSpeedMultiplier = 1f;
             _wrongShardCount = 0;
             _lastEndlessDistanceHud = -1;
+            _activeEndlessConfig = _baseEndlessConfig;
+        }
+
+        // Creates a per-run Endless seed while keeping finite Stage configs deterministic.
+        private static int CreateEndlessRunSeed()
+        {
+            unchecked
+            {
+                int timeSeed = Environment.TickCount;
+                int frameSeed = Mathf.RoundToInt(Time.realtimeSinceStartup * 1000f);
+                int randomSeed = UnityEngine.Random.Range(1, int.MaxValue);
+                int mixedSeed = timeSeed ^ frameSeed ^ randomSeed;
+                return mixedSeed == 0 ? 77331 : mixedSeed;
+            }
         }
 
         // Removes the temporary start prompt after the run is underway.
@@ -712,7 +721,7 @@ namespace ColorGateRush
                     EndlessRecords.BestDistance,
                     seed,
                     _wrongShardCount,
-                    _endlessConfig.WrongShardLimit,
+                    _activeEndlessConfig.WrongShardLimit,
                     _endlessSpeedMultiplier);
             }
             else
@@ -731,11 +740,11 @@ namespace ColorGateRush
 
             _endlessElapsedTime += Time.deltaTime;
             _endlessDistance = Mathf.Max(0f, _runner.transform.position.z);
-            float currentSpeed = _endlessConfig.ForwardSpeed(_endlessElapsedTime, _endlessDistance);
-            _endlessSpeedMultiplier = _endlessConfig.SpeedMultiplier(_endlessElapsedTime, _endlessDistance);
+            float currentSpeed = _activeEndlessConfig.ForwardSpeed(_endlessElapsedTime, _endlessDistance);
+            _endlessSpeedMultiplier = _activeEndlessConfig.SpeedMultiplier(_endlessElapsedTime, _endlessDistance);
             _runner.SetForwardSpeedRange(currentSpeed, currentSpeed);
-            _runner.SetLaneMoveSharpness(_endlessConfig.LaneMoveSharpness(_endlessElapsedTime, _endlessDistance));
-            _levelGenerator.UpdateEndlessGeneration(_endlessDistance, _endlessConfig, _endlessElapsedTime);
+            _runner.SetLaneMoveSharpness(_activeEndlessConfig.LaneMoveSharpness(_endlessElapsedTime, _endlessDistance));
+            _levelGenerator.UpdateEndlessGeneration(_endlessDistance, _activeEndlessConfig, _endlessElapsedTime);
             int distanceBucket = Mathf.FloorToInt(_endlessDistance);
             if (distanceBucket != _lastEndlessDistanceHud)
             {
@@ -753,7 +762,7 @@ namespace ColorGateRush
                 _endlessDistance,
                 _levelGenerator.EndlessGeneratedRows,
                 _wrongShardCount,
-                _endlessConfig.WrongShardLimit,
+                _activeEndlessConfig.WrongShardLimit,
                 failReason);
             _ui.ShowEndlessResult(result);
         }
@@ -766,13 +775,13 @@ namespace ColorGateRush
             int remaining = Mathf.Max(0, limit - _wrongShardCount);
             if (_wrongShardCount >= limit)
             {
-                _ui.ShowMessage("다른 색 샤드 3회! 실패");
+                _ui.ShowMessage(LocalizationManager.T(LocalizationKey.WrongShardToastLimit));
                 return true;
             }
 
             string warning = remaining == 1
-                ? "주의! 기회 1회 남음"
-                : "다른 색 샤드! 기회 " + remaining + "회 남음";
+                ? LocalizationManager.T(LocalizationKey.WrongShardToastOneChance)
+                : LocalizationManager.T(LocalizationKey.WrongShardToastRemaining, remaining);
             _ui.ShowMessage(warning);
             return false;
         }
@@ -780,7 +789,7 @@ namespace ColorGateRush
         // Returns the wrong-shard limit used by the current mode.
         private int GetWrongShardLimit()
         {
-            return _mode == GameMode.Endless ? _endlessConfig.WrongShardLimit : GameConstants.MaxWrongShardCount;
+            return _mode == GameMode.Endless ? _activeEndlessConfig.WrongShardLimit : GameConstants.MaxWrongShardCount;
         }
 
         // Ends Endless immediately from non-obstacle failure conditions without touching Stage Mode progress.
@@ -803,10 +812,10 @@ namespace ColorGateRush
         private void RequestQuit()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            _ui.ShowMenuNotice("WebGL에서는 브라우저 탭을 닫아주세요.");
+            _ui.ShowMenuNotice(LocalizationManager.T(LocalizationKey.QuitWebGlNotice));
 #elif UNITY_EDITOR
             Debug.Log("Quit requested from Main Menu.");
-            _ui.ShowMenuNotice("Editor에서는 종료되지 않습니다.");
+            _ui.ShowMenuNotice(LocalizationManager.T(LocalizationKey.QuitEditorNotice));
 #else
             Application.Quit();
 #endif
@@ -816,56 +825,6 @@ namespace ColorGateRush
         private int MusicStageIndex()
         {
             return _mode == GameMode.Endless ? 5 : _currentStage.StageIndex;
-        }
-
-        // Starts a local-only playtest attempt timer and counter for the active stage.
-        private void BeginPlaytestAttempt(StageConfig stage)
-        {
-            _runStartedAt = Time.unscaledTime;
-            _runStatsOpen = true;
-            PlaytestStats.RecordStageStarted(stage.StageIndex);
-        }
-
-        // Records a completed attempt once and then closes the active stats window.
-        private void RecordRunCompleted(StageResult result)
-        {
-            if (!_runStatsOpen)
-            {
-                return;
-            }
-
-            PlaytestStats.RecordCompleted(result.StageIndex, result.Score, result.Stars, GetRunElapsedSeconds(), _wrongShardCount);
-            _runStatsOpen = false;
-        }
-
-        // Records a failed attempt once with its cause and then closes the active stats window.
-        private void RecordRunFailed(StageFailReason failReason, int wrongShardCount)
-        {
-            if (!_runStatsOpen || _currentStage.StageIndex <= 0)
-            {
-                return;
-            }
-
-            PlaytestStats.RecordFailed(_currentStage.StageIndex, _score, GetRunElapsedSeconds(), failReason, wrongShardCount);
-            _runStatsOpen = false;
-        }
-
-        // Records pause/menu/retry abandonment as a quit so playtesters can separate it from obstacle fails.
-        private void RecordRunQuitIfOpen(PlaytestExitReason reason)
-        {
-            if (!_runStatsOpen || _currentStage.StageIndex <= 0)
-            {
-                return;
-            }
-
-            PlaytestStats.RecordQuit(_currentStage.StageIndex, _score, GetRunElapsedSeconds(), reason);
-            _runStatsOpen = false;
-        }
-
-        // Calculates elapsed real time for one attempt without being affected by pause timeScale.
-        private float GetRunElapsedSeconds()
-        {
-            return Mathf.Max(0f, Time.unscaledTime - _runStartedAt);
         }
 
         // Triggers a small camera shake when the active camera has the follow component.

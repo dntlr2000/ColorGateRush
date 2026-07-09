@@ -20,11 +20,13 @@ namespace ColorGateRush
         private const string TrackBaseMaterialPath = MaterialRoot + "CGR_SimpleLitTrack";
         private const string ObstacleBaseMaterialPath = MaterialRoot + "CGR_SimpleLitObstacle";
         private const string FinishBaseMaterialPath = MaterialRoot + "CGR_SimpleLitFinish";
+        private const string PlayerBaseMaterialPath = MaterialRoot + "CGR_SimpleLitPlayer";
         private const string UnlitOpaqueBaseMaterialPath = MaterialRoot + "CGR_UnlitOpaque";
         private const string TransparentBaseMaterialPath = MaterialRoot + "CGR_UnlitTransparent";
         private const string ParticleBaseMaterialPath = MaterialRoot + "CGR_ParticleUnlit";
 
         private static readonly System.Collections.Generic.Dictionary<RuntimeMaterialStyle, Material> OpaqueBaseMaterials = new System.Collections.Generic.Dictionary<RuntimeMaterialStyle, Material>();
+        private static Material _playerBodyBaseMaterial;
         private static Material _unlitOpaqueBaseMaterial;
         private static Material _transparentBaseMaterial;
         private static Material _particleBaseMaterial;
@@ -57,13 +59,18 @@ namespace ColorGateRush
             return material;
         }
 
-        // Creates the runner body material from a build-included unlit asset so player validation never depends on shard materials.
+        // Creates the runner body material from a build-included Simple Lit asset so the player keeps lighting and shadow detail.
         public static Material CreatePlayerBody(string name, Color color, float emissionStrength)
         {
-            Material material = CreateMaterialFromBase(name, GetUnlitOpaqueBaseMaterial(), "Universal Render Pipeline/Unlit", "Sprites/Default", "UI/Default");
+            Material material = CreateLitMaterialFromBase(name, GetPlayerBodyBaseMaterial());
             SetMaterialColor(material, color);
             ConfigureLitSurface(material, color, emissionStrength);
             ValidateMaterial(material, name);
+            if (!IsLitCapableMaterial(material))
+            {
+                throw new InvalidOperationException("Player body material must use a supported lit-capable shader: " + name + ".");
+            }
+
             return material;
         }
 
@@ -95,6 +102,14 @@ namespace ColorGateRush
             return material != null && material.shader != null && material.shader.isSupported;
         }
 
+        // Returns true when a material can receive light/shadow detail instead of using an unlit shader path.
+        public static bool IsLitCapableMaterial(Material material)
+        {
+            return IsMaterialUsable(material)
+                && material.renderQueue < 3000
+                && material.shader.name.IndexOf("Unlit", StringComparison.OrdinalIgnoreCase) < 0;
+        }
+
         // Loads the build-included opaque base material from Resources.
         private static Material GetOpaqueBaseMaterial(RuntimeMaterialStyle style)
         {
@@ -107,7 +122,22 @@ namespace ColorGateRush
             return material;
         }
 
-        // Loads the build-included unlit opaque material used for player-safe body rendering.
+        // Loads the build-included Simple Lit player material and falls back only to lit-capable project materials.
+        private static Material GetPlayerBodyBaseMaterial()
+        {
+            if (!IsMaterialUsable(_playerBodyBaseMaterial) || !IsLitCapableMaterial(_playerBodyBaseMaterial))
+            {
+                if (!TryLoadBaseMaterial(PlayerBaseMaterialPath, out _playerBodyBaseMaterial)
+                    || !IsLitCapableMaterial(_playerBodyBaseMaterial))
+                {
+                    TryLoadBaseMaterial(OpaqueBaseMaterialPath, out _playerBodyBaseMaterial);
+                }
+            }
+
+            return _playerBodyBaseMaterial;
+        }
+
+        // Loads the build-included unlit opaque material used for non-player fallback rendering.
         private static Material GetUnlitOpaqueBaseMaterial()
         {
             if (!IsMaterialUsable(_unlitOpaqueBaseMaterial))
@@ -171,6 +201,20 @@ namespace ColorGateRush
             return Resources.GetBuiltinResource<Material>("Default-Material.mat");
         }
 
+        // Attempts to load a Resources material without substituting builtin or unlit fallback materials.
+        private static bool TryLoadBaseMaterial(string resourcePath, out Material material)
+        {
+            material = Resources.Load<Material>(resourcePath);
+            if (IsMaterialUsable(material))
+            {
+                return true;
+            }
+
+            WarnDevelopmentOnly("Missing or unsupported lit runtime base material at Resources/" + resourcePath + ".");
+            material = default;
+            return false;
+        }
+
         // Creates a clone from a Resources material asset, with a limited fallback for editor diagnostics.
         private static Material CreateMaterialFromBase(string name, Material baseMaterial, params string[] fallbackShaderNames)
         {
@@ -198,6 +242,42 @@ namespace ColorGateRush
             }
 
             throw new InvalidOperationException("No usable runtime material could be created for " + name + ".");
+        }
+
+        // Creates a lit material clone and refuses unlit fallback for the player body.
+        private static Material CreateLitMaterialFromBase(string name, Material baseMaterial)
+        {
+            if (IsLitCapableMaterial(baseMaterial))
+            {
+                Material material = new Material(baseMaterial);
+                material.name = name;
+                return material;
+            }
+
+            Shader fallback = FindSupportedNamedShader("Universal Render Pipeline/Simple Lit");
+            if (fallback != null && fallback.isSupported)
+            {
+                Material material = new Material(fallback);
+                material.name = name;
+                return material;
+            }
+
+            throw new InvalidOperationException("No lit-capable runtime material could be created for " + name + ".");
+        }
+
+        // Finds only the named shader candidates, without falling back to Unity's builtin default material.
+        private static Shader FindSupportedNamedShader(params string[] names)
+        {
+            for (int i = 0; i < names.Length; i++)
+            {
+                Shader shader = Shader.Find(names[i]);
+                if (shader != null && shader.isSupported)
+                {
+                    return shader;
+                }
+            }
+
+            return default;
         }
 
         // Finds a limited fallback shader only when Resources material loading has failed.

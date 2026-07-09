@@ -110,6 +110,35 @@ namespace ColorGateRush
                 DefaultWrongShardLimit);
         }
 
+        // Returns the same Endless tuning with a fresh per-run seed.
+        public EndlessRunConfig WithSeed(int seed)
+        {
+            return new EndlessRunConfig(
+                seed,
+                StartForwardSpeed,
+                LaneMoveSpeed,
+                GenerateAheadDistance,
+                CleanupDistance,
+                FirstGateZ,
+                RowSpacingStart,
+                RowSpacingEnd,
+                GateIntervalStart,
+                GateIntervalEnd,
+                ObstacleChanceStart,
+                ObstacleChanceMax,
+                MatchingShardChanceStart,
+                MatchingShardChanceEnd,
+                OffColorShardChanceStart,
+                OffColorShardChanceEnd,
+                SafeEmptyLaneChanceStart,
+                SafeEmptyLaneChanceEnd,
+                DifficultyRampDistance,
+                SpeedGrowthPerSecond,
+                DistanceSpeedGrowthPerMeter,
+                LaneMoveGrowthFactor,
+                WrongShardLimit);
+        }
+
         // Returns normalized difficulty by distance for gradual Endless pressure growth.
         public float Difficulty01(float distance)
         {

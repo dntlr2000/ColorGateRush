@@ -11,17 +11,36 @@ namespace ColorGateRush
 {
     public sealed class RuntimeUi : MonoBehaviour
     {
+        private const string TitleScreenResourcePath = "ColorGateRush/Images/TitleScreen";
         private const string MainMenuBackgroundResourcePath = "ColorGateRush/Images/MainMenuBackground";
+        private const float SettingsContentWidth = 560f;
+        private const float SettingsPrimaryButtonHeight = 74f;
+        private const float SettingsSliderHeight = 52f;
+        private const float SettingsSliderTrackHeight = 12f;
+        private const float SettingsSliderHandleWidth = 20f;
+        private const float SettingsSliderHandleHeight = 34f;
+        private const float SettingsTabWidth = 218f;
+        private const float SettingsPairButtonWidth = 264f;
+        private const float SettingsBottomActionY = -585f;
+
+        private enum SettingsTab
+        {
+            General,
+            Language,
+            Data
+        }
 
         private Canvas _canvas;
+        private GameObject _titlePanel;
         private GameObject _menuPanel;
         private GameObject _stageSelectPanel;
         private GameObject _rulesPanel;
         private GameObject _settingsPanel;
         private GameObject _resetConfirmPanel;
         private GameObject _endlessResetConfirmPanel;
-        private GameObject _playtestStatsPanel;
-        private GameObject _statsResetConfirmPanel;
+        private GameObject _settingsGeneralSection;
+        private GameObject _settingsLanguageSection;
+        private GameObject _settingsDataSection;
         private GameObject _hudPanel;
         private GameObject _messageToastPanel;
         private GameObject _comboBadgePanel;
@@ -37,6 +56,8 @@ namespace ColorGateRush
         private Text _hudCurrentText;
         private Text _hudComboText;
         private Text _messageText;
+        private Text _hudScoreLabelText;
+        private Text _hudMistakeLabelText;
         private Image _hudProgressFill;
         private Image _hudColorChip;
         private Text _hudShapeGlyphText;
@@ -51,7 +72,12 @@ namespace ColorGateRush
         private Slider _sfxVolumeSlider;
         private Text _cameraShakeButtonText;
         private Text _colorAssistButtonText;
-        private Text _statsBodyText;
+        private Text _languageLabelText;
+        private Button _settingsGeneralTabButton;
+        private Button _settingsLanguageTabButton;
+        private Button _settingsDataTabButton;
+        private Button _koreanLanguageButton;
+        private Button _englishLanguageButton;
         private Text _pauseStageText;
         private Text _pauseScoreText;
         private Text _resultTitleText;
@@ -77,8 +103,6 @@ namespace ColorGateRush
         private Action _onToggleCameraShake;
         private Action _onToggleColorAssist;
         private Action _onResetProgress;
-        private Action _onPlaytestStats;
-        private Action _onResetPlaytestStats;
         private Action _onStartEndless;
         private Action _onQuit;
         private Action _onResetEndlessRecords;
@@ -87,11 +111,51 @@ namespace ColorGateRush
         private int _hudStageIndex = 1;
         private int _hudTwoStarScore;
         private int _hudThreeStarScore;
+        private StageConfig[] _lastStages;
+        private int _lastUnlockedStage;
+        private int _lastSelectedStage;
+        private Func<int, int> _lastGetBestStars;
+        private SettingsTab _activeSettingsTab = SettingsTab.General;
+        private bool _lastHudIsEndless;
+        private StageConfig _lastHudStage;
+        private int _lastHudScore;
+        private int _lastHudCombo;
+        private ColorId _lastHudColor = ColorId.Cyan;
+        private int _lastHudSeed;
+        private int _lastWrongShardCount;
+        private int _lastWrongShardLimit;
+        private float _lastEndlessDistance;
+        private int _lastEndlessBestScore;
+        private float _lastEndlessBestDistance;
+        private float _lastEndlessSpeedMultiplier = 1f;
+        private bool _lastPauseIsEndless;
+        private StageConfig _lastPauseStage;
+        private int _lastPauseScore;
+        private float _lastPauseDistance;
+        private bool _lastResultIsEndless;
+        private bool _lastResultCompleted;
+        private StageConfig _lastResultStage;
+        private StageResult _lastStageResult;
+        private bool _lastNextStageAvailable;
+        private EndlessRunResult _lastEndlessResult;
+        private Action _onTitleContinue;
 
         // Builds the runtime UI tree as soon as the systems object wakes.
         private void Awake()
         {
             EnsureCanvas();
+        }
+
+        // Subscribes this UI controller to language changes while it is alive.
+        private void OnEnable()
+        {
+            LocalizationManager.OnLanguageChanged += HandleLanguageChanged;
+        }
+
+        // Removes the language callback so destroyed UI objects are not refreshed.
+        private void OnDisable()
+        {
+            LocalizationManager.OnLanguageChanged -= HandleLanguageChanged;
         }
 
         // Hides transient center toast text after its unscaled display window expires.
@@ -105,6 +169,7 @@ namespace ColorGateRush
 
         // Connects UI button callbacks to the game manager flow.
         public void Configure(
+            Action onTitleContinue,
             Action onStart,
             Action onStageSelect,
             Action onRules,
@@ -123,13 +188,12 @@ namespace ColorGateRush
             Action onToggleCameraShake,
             Action onToggleColorAssist,
             Action onResetProgress,
-            Action onPlaytestStats,
-            Action onResetPlaytestStats,
             Action onStartEndless,
             Action onQuit,
             Action onResetEndlessRecords,
             Action onTutorialOk)
         {
+            _onTitleContinue = onTitleContinue;
             _onStart = onStart;
             _onStageSelect = onStageSelect;
             _onRules = onRules;
@@ -148,12 +212,148 @@ namespace ColorGateRush
             _onToggleCameraShake = onToggleCameraShake;
             _onToggleColorAssist = onToggleColorAssist;
             _onResetProgress = onResetProgress;
-            _onPlaytestStats = onPlaytestStats;
-            _onResetPlaytestStats = onResetPlaytestStats;
             _onStartEndless = onStartEndless;
             _onQuit = onQuit;
             _onResetEndlessRecords = onResetEndlessRecords;
             _onTutorialOk = onTutorialOk;
+        }
+
+        // Refreshes the currently visible dynamic UI after the active language changes.
+        private void HandleLanguageChanged()
+        {
+            if (_canvas == null)
+            {
+                return;
+            }
+
+            RefreshSettingsLabels();
+            RefreshLanguageButtons();
+            if (_stageSelectPanel != null && _stageSelectPanel.activeSelf && _lastStages != null)
+            {
+                RebuildStageButtons(_lastStages, _lastUnlockedStage, _lastSelectedStage, _lastGetBestStars);
+            }
+
+            if (_hudPanel != null && _hudPanel.activeSelf)
+            {
+                if (_lastHudIsEndless)
+                {
+                    SetEndlessHud(
+                        _lastHudScore,
+                        _lastHudCombo,
+                        _lastHudColor,
+                        _lastEndlessDistance,
+                        _lastEndlessBestScore,
+                        _lastEndlessBestDistance,
+                        _lastHudSeed,
+                        _lastWrongShardCount,
+                        _lastWrongShardLimit,
+                        _lastEndlessSpeedMultiplier);
+                }
+                else
+                {
+                    SetHud(_lastHudScore, _lastHudCombo, _lastHudColor, _lastHudSeed, _lastWrongShardCount, _lastWrongShardLimit);
+                }
+            }
+
+            if (_pausePanel != null && _pausePanel.activeSelf)
+            {
+                if (_lastPauseIsEndless)
+                {
+                    ShowEndlessPauseMenu(_lastPauseScore, _lastPauseDistance);
+                }
+                else if (_lastPauseStage.StageIndex > 0)
+                {
+                    ShowPauseMenu(_lastPauseStage, _lastPauseScore);
+                }
+            }
+
+            if (_resultPanel != null && _resultPanel.activeSelf)
+            {
+                if (_lastResultIsEndless)
+                {
+                    ShowEndlessResult(_lastEndlessResult);
+                }
+                else if (_lastResultStage.StageIndex > 0)
+                {
+                    ShowResult(_lastResultCompleted, _lastResultStage, _lastStageResult, _lastNextStageAvailable);
+                }
+            }
+        }
+
+        // Applies a new language choice without changing the current game state.
+        private void SetLanguage(Language language)
+        {
+            LocalizationManager.SetLanguage(language);
+            RefreshLanguageButtons();
+        }
+
+        // Highlights the currently selected language button in Settings.
+        private void RefreshLanguageButtons()
+        {
+            ApplyLanguageButtonState(_koreanLanguageButton, LocalizationManager.CurrentLanguage == Language.Korean);
+            ApplyLanguageButtonState(_englishLanguageButton, LocalizationManager.CurrentLanguage == Language.English);
+            RefreshSettingsTabButtons();
+        }
+
+        // Shows one Settings section and keeps destructive reset controls isolated under Data.
+        private void ShowSettingsTab(SettingsTab tab)
+        {
+            _activeSettingsTab = tab;
+            if (_settingsGeneralSection != null)
+            {
+                _settingsGeneralSection.SetActive(tab == SettingsTab.General);
+            }
+
+            if (_settingsLanguageSection != null)
+            {
+                _settingsLanguageSection.SetActive(tab == SettingsTab.Language);
+            }
+
+            if (_settingsDataSection != null)
+            {
+                _settingsDataSection.SetActive(tab == SettingsTab.Data);
+            }
+
+            if (_resetConfirmPanel != null)
+            {
+                _resetConfirmPanel.SetActive(false);
+            }
+
+            if (_endlessResetConfirmPanel != null)
+            {
+                _endlessResetConfirmPanel.SetActive(false);
+            }
+
+            RefreshSettingsTabButtons();
+        }
+
+        // Highlights the selected Settings tab without rebuilding the whole panel.
+        private void RefreshSettingsTabButtons()
+        {
+            ApplyLanguageButtonState(_settingsGeneralTabButton, _activeSettingsTab == SettingsTab.General);
+            ApplyLanguageButtonState(_settingsLanguageTabButton, _activeSettingsTab == SettingsTab.Language);
+            ApplyLanguageButtonState(_settingsDataTabButton, _activeSettingsTab == SettingsTab.Data);
+        }
+
+        // Applies selected or neutral styling to one generated language button.
+        private static void ApplyLanguageButtonState(Button button, bool selected)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            Image image = button.GetComponent<Image>();
+            if (image != null)
+            {
+                image.color = selected ? ButtonColor() : HudPanelColor(0.70f);
+            }
+
+            Text text = button.GetComponentInChildren<Text>();
+            if (text != null)
+            {
+                text.color = selected ? ButtonTextColor() : VisualTheme.Current().HudTextColor;
+            }
         }
 
         // Shows the main menu and hides gameplay/result panels.
@@ -167,15 +367,26 @@ namespace ColorGateRush
             }
         }
 
+        // Shows the launch title image and waits for an explicit tap/click before opening the main menu.
+        public void ShowTitleScreen()
+        {
+            EnsureCanvas();
+            SetPanel(_titlePanel);
+        }
+
         // Shows stage selection with lock state and saved best stars.
         public void ShowStageSelect(StageConfig[] stages, int unlockedStage, int selectedStage, Func<int, int> getBestStars)
         {
             EnsureCanvas();
+            _lastStages = stages;
+            _lastUnlockedStage = unlockedStage;
+            _lastSelectedStage = selectedStage;
+            _lastGetBestStars = getBestStars;
             RebuildStageButtons(stages, unlockedStage, selectedStage, getBestStars);
             SetPanel(_stageSelectPanel);
         }
 
-        // Shows the Korean rules panel and hides other panels.
+        // Shows the rules panel and hides other panels.
         public void ShowRules()
         {
             EnsureCanvas();
@@ -189,16 +400,9 @@ namespace ColorGateRush
             SetPanel(_settingsPanel);
             _resetConfirmPanel.SetActive(false);
             _endlessResetConfirmPanel.SetActive(false);
+            ShowSettingsTab(SettingsTab.General);
             RefreshSettingsLabels();
-        }
-
-        // Shows local playtest counters in a scrollable panel without changing gameplay state.
-        public void ShowPlaytestStats(int stageCount)
-        {
-            EnsureCanvas();
-            RebuildPlaytestStats(stageCount);
-            SetPanel(_playtestStatsPanel);
-            _statsResetConfirmPanel.SetActive(false);
+            RefreshLanguageButtons();
         }
 
         // Shows a short main-menu notice for platform-specific actions such as Editor/WebGL quit handling.
@@ -216,6 +420,8 @@ namespace ColorGateRush
         {
             EnsureCanvas();
             SetPanel(_hudPanel);
+            _lastHudIsEndless = false;
+            _lastHudStage = stage;
             _hudStageIndex = stage.StageIndex;
             _hudTwoStarScore = stage.TwoStarScore;
             _hudThreeStarScore = stage.ThreeStarScore;
@@ -237,6 +443,7 @@ namespace ColorGateRush
         {
             EnsureCanvas();
             SetPanel(_hudPanel);
+            _lastHudIsEndless = true;
             SetEndlessHud(score, combo, color, distance, bestScore, bestDistance, seed, wrongShardCount, wrongShardLimit, speedMultiplier);
         }
 
@@ -245,8 +452,7 @@ namespace ColorGateRush
         {
             EnsureCanvas();
             ShowMessage(
-                "같은 색/모양 샤드만 모으세요"
-                + "\n다른 색 3회 = 실패",
+                LocalizationManager.T(LocalizationKey.StageStartHint),
                 2.0f);
         }
 
@@ -255,8 +461,7 @@ namespace ColorGateRush
         {
             EnsureCanvas();
             ShowMessage(
-                "점점 빨라지는 기록 도전"
-                + "\n다른 색 3회 = 실패",
+                LocalizationManager.T(LocalizationKey.EndlessStartHint),
                 2.0f);
         }
 
@@ -273,8 +478,11 @@ namespace ColorGateRush
             EnsureCanvas();
             SetPanel(_pausePanel);
             ClearMessage();
-            _pauseStageText.text = "Stage " + stage.StageIndex;
-            _pauseScoreText.text = "현재 점수 " + score;
+            _lastPauseIsEndless = false;
+            _lastPauseStage = stage;
+            _lastPauseScore = score;
+            _pauseStageText.text = LocalizationManager.T(LocalizationKey.StageLabel, stage.StageIndex);
+            _pauseScoreText.text = LocalizationManager.T(LocalizationKey.CurrentScore, score);
         }
 
         // Shows the pause menu for Endless Mode without mentioning stage stars or unlocks.
@@ -283,8 +491,11 @@ namespace ColorGateRush
             EnsureCanvas();
             SetPanel(_pausePanel);
             ClearMessage();
-            _pauseStageText.text = "Endless Mode";
-            _pauseScoreText.text = "Score " + score + "   Distance " + Mathf.FloorToInt(distance) + "m";
+            _lastPauseIsEndless = true;
+            _lastPauseScore = score;
+            _lastPauseDistance = distance;
+            _pauseStageText.text = LocalizationManager.T(LocalizationKey.EndlessMode);
+            _pauseScoreText.text = LocalizationManager.T(LocalizationKey.Score) + " " + score + "   " + LocalizationManager.T(LocalizationKey.Distance) + " " + Mathf.FloorToInt(distance) + "m";
         }
 
         // Shows the failure or clear result panel with final score and navigation buttons.
@@ -292,26 +503,37 @@ namespace ColorGateRush
         {
             EnsureCanvas();
             SetPanel(_resultPanel);
-            _resultTitleText.text = completed ? "클리어!" : "실패";
-            _resultScoreText.text = "Stage " + stage.StageIndex + "\n최종 점수 " + result.Score + "\n획득 별점 " + StarsText(result.Stars);
-            _restartButtonText.text = completed ? "재시작" : "다시 도전";
+            _lastResultIsEndless = false;
+            _lastResultCompleted = completed;
+            _lastResultStage = stage;
+            _lastStageResult = result;
+            _lastNextStageAvailable = nextStageAvailable;
+            _resultTitleText.text = completed ? LocalizationManager.T(LocalizationKey.ClearGeneric) : LocalizationManager.T(LocalizationKey.Failed);
+            _resultScoreText.text = LocalizationManager.T(LocalizationKey.StageLabel, stage.StageIndex)
+                + "\n" + LocalizationManager.T(LocalizationKey.FinalScore, result.Score)
+                + "\n" + LocalizationManager.T(LocalizationKey.StarsEarned, StarsText(result.Stars));
+            _restartButtonText.text = completed ? LocalizationManager.T(LocalizationKey.Restart) : LocalizationManager.T(LocalizationKey.TryAgain);
             if (completed)
             {
-                string bestText = result.BestStarsImproved ? "최고 별점 갱신!" : "최고 별점 " + StarsText(result.BestStars);
+                string bestText = result.BestStarsImproved
+                    ? LocalizationManager.T(LocalizationKey.BestStarsImproved)
+                    : LocalizationManager.T(LocalizationKey.BestStars, StarsText(result.BestStars));
                 int threeStarShortfall = Mathf.Max(0, stage.ThreeStarScore - result.Score);
-                string starPraise = result.Stars == 3 ? "완벽에 가까운 플레이!" : (result.Stars == 2 ? "좋아요! 더 높은 별점을 노려보세요" : "클리어! 더 높은 별점을 노려보세요");
+                string starPraise = result.Stars == 3
+                    ? LocalizationManager.T(LocalizationKey.NearPerfect)
+                    : (result.Stars == 2 ? LocalizationManager.T(LocalizationKey.GoodRun) : LocalizationManager.T(LocalizationKey.ImproveStars));
                 string unlockText = result.NextStageUnlocked
-                    ? "다음 스테이지 해금!"
+                    ? LocalizationManager.T(LocalizationKey.StageUnlock)
                     : (!result.HasNextStage
-                        ? "모든 스테이지 완료!"
-                        : (nextStageAvailable ? "클리어!" : "다음 스테이지는 클리어하면 열립니다"));
-                string shortfallText = result.Stars < 3 ? "\n3성까지 부족한 점수: " + threeStarShortfall : string.Empty;
+                        ? LocalizationManager.T(LocalizationKey.AllStagesComplete)
+                        : (nextStageAvailable ? LocalizationManager.T(LocalizationKey.ClearGeneric) : LocalizationManager.T(LocalizationKey.ClearToUnlock)));
+                string shortfallText = result.Stars < 3 ? "\n" + LocalizationManager.T(LocalizationKey.ToThreeStar, threeStarShortfall) : string.Empty;
                 _resultInfoText.text = starPraise + "\n" + bestText + "\n" + unlockText + shortfallText;
             }
             else
             {
                 _resultInfoText.text = StageFailReasonText(result.FailReason)
-                    + "\n피니시에 도달하면 별 1개를 얻습니다.";
+                    + "\n" + LocalizationManager.T(LocalizationKey.FinishForOneStar);
             }
 
             _nextStageButton.gameObject.SetActive(completed && result.HasNextStage);
@@ -323,17 +545,20 @@ namespace ColorGateRush
         {
             EnsureCanvas();
             SetPanel(_resultPanel);
-            _resultTitleText.text = "기록 종료!";
-            _resultScoreText.text = "Endless Mode\nScore " + result.Score
-                + "\nDistance " + Mathf.FloorToInt(result.Distance) + "m"
-                + "\n기회: " + FormatMistakeIcons(result.WrongShardCount, result.WrongShardLimit);
-            string recordText = result.NewBestScore || result.NewBestDistance ? "New Record!" : "Best Record";
+            _lastResultIsEndless = true;
+            _lastEndlessResult = result;
+            _resultTitleText.text = LocalizationManager.T(LocalizationKey.RecordEnded);
+            _resultScoreText.text = LocalizationManager.T(LocalizationKey.EndlessMode)
+                + "\n" + LocalizationManager.T(LocalizationKey.Score) + " " + result.Score
+                + "\n" + LocalizationManager.T(LocalizationKey.Distance) + " " + Mathf.FloorToInt(result.Distance) + "m"
+                + "\n" + LocalizationManager.T(LocalizationKey.Chances) + ": " + FormatMistakeIcons(result.WrongShardCount, result.WrongShardLimit);
+            string recordText = result.NewBestScore || result.NewBestDistance ? LocalizationManager.T(LocalizationKey.NewRecord) : LocalizationManager.T(LocalizationKey.BestRecord);
             _resultInfoText.text = recordText
-                + "\n실패 원인: " + EndlessFailReasonText(result.FailReason)
-                + "\nBest Score " + result.BestScore
-                + "   Best Distance " + Mathf.FloorToInt(result.BestDistance) + "m"
-                + "\n생성 Row " + result.RowsGenerated;
-            _restartButtonText.text = "다시 도전";
+                + "\n" + LocalizationManager.T(LocalizationKey.FailureReason, EndlessFailReasonText(result.FailReason))
+                + "\n" + LocalizationManager.T(LocalizationKey.BestScore) + " " + result.BestScore
+                + "   " + LocalizationManager.T(LocalizationKey.BestDistance) + " " + Mathf.FloorToInt(result.BestDistance) + "m"
+                + "\n" + LocalizationManager.T(LocalizationKey.Rows) + " " + result.RowsGenerated;
+            _restartButtonText.text = LocalizationManager.T(LocalizationKey.TryAgain);
             _nextStageButton.gameObject.SetActive(false);
             _nextStageButton.interactable = false;
         }
@@ -342,16 +567,16 @@ namespace ColorGateRush
         private static string EndlessFailReasonText(EndlessFailReason failReason)
         {
             return failReason == EndlessFailReason.WrongShardLimit
-                ? "다른 색 샤드를 3번 먹었습니다"
-                : "장애물 충돌";
+                ? LocalizationManager.T(LocalizationKey.WrongShardLimitReason)
+                : LocalizationManager.T(LocalizationKey.ObstacleHitReason);
         }
 
         // Returns player-facing text for finite Stage Mode failure causes.
         private static string StageFailReasonText(StageFailReason failReason)
         {
             return failReason == StageFailReason.WrongShardLimit
-                ? "다른 색 샤드를 3번 먹었습니다."
-                : "장애물에 부딪혔습니다.";
+                ? LocalizationManager.T(LocalizationKey.WrongShardLimitReason)
+                : LocalizationManager.T(LocalizationKey.ObstacleHitReason);
         }
 
         // Updates score, combo, color, seed, mistake chances, and compact in-game rule hints.
@@ -359,11 +584,18 @@ namespace ColorGateRush
         {
             EnsureCanvas();
             ColorVisualProfile profile = GameConstants.GetVisualProfile(color);
+            _lastHudIsEndless = false;
+            _lastHudScore = score;
+            _lastHudCombo = combo;
+            _lastHudColor = color;
+            _lastHudSeed = seed;
+            _lastWrongShardCount = wrongShardCount;
+            _lastWrongShardLimit = wrongShardLimit;
             int threeStarRemaining = Mathf.Max(0, _hudThreeStarScore - score);
-            _hudModeText.text = "STAGE " + _hudStageIndex.ToString("00");
+            _hudModeText.text = LocalizationManager.T(LocalizationKey.StageLabel, _hudStageIndex.ToString("00"));
             _scoreText.text = score.ToString();
-            _hudTargetText.text = "Finish   ★2 " + _hudTwoStarScore + "   ★3 " + _hudThreeStarScore;
-            _hudProgressText.text = threeStarRemaining > 0 ? "3★까지 " + threeStarRemaining : "3★ READY";
+            _hudTargetText.text = LocalizationManager.T(LocalizationKey.Finish) + "   ★2 " + _hudTwoStarScore + "   ★3 " + _hudThreeStarScore;
+            _hudProgressText.text = threeStarRemaining > 0 ? LocalizationManager.T(LocalizationKey.ToThreeStar, threeStarRemaining) : LocalizationManager.T(LocalizationKey.ThreeStarReady);
             SetHudProgress(_hudProgressFill, score / (float)Mathf.Max(1, _hudThreeStarScore), 346f);
             _hudMistakeIconsText.text = FormatMistakeIcons(wrongShardCount, wrongShardLimit);
             SetCurrentVisual(profile);
@@ -387,12 +619,23 @@ namespace ColorGateRush
         {
             EnsureCanvas();
             ColorVisualProfile profile = GameConstants.GetVisualProfile(color);
+            _lastHudIsEndless = true;
+            _lastHudScore = score;
+            _lastHudCombo = combo;
+            _lastHudColor = color;
+            _lastHudSeed = seed;
+            _lastWrongShardCount = wrongShardCount;
+            _lastWrongShardLimit = wrongShardLimit;
+            _lastEndlessDistance = distance;
+            _lastEndlessBestScore = bestScore;
+            _lastEndlessBestDistance = bestDistance;
+            _lastEndlessSpeedMultiplier = speedMultiplier;
             int safeWrongLimit = Mathf.Max(1, wrongShardLimit);
             int safeWrongCount = Mathf.Clamp(wrongShardCount, 0, safeWrongLimit);
-            _hudModeText.text = "ENDLESS";
+            _hudModeText.text = LocalizationManager.T(LocalizationKey.EndlessMode);
             _scoreText.text = score.ToString();
-            _hudTargetText.text = "거리 " + Mathf.FloorToInt(distance) + "m   최고 " + bestScore;
-            _hudProgressText.text = "SPEED x" + Mathf.Max(1f, speedMultiplier).ToString("0.0") + "   BEST " + Mathf.FloorToInt(bestDistance) + "m";
+            _hudTargetText.text = LocalizationManager.T(LocalizationKey.Distance) + " " + Mathf.FloorToInt(distance) + "m   " + LocalizationManager.T(LocalizationKey.Best) + " " + bestScore;
+            _hudProgressText.text = LocalizationManager.T(LocalizationKey.Speed) + " x" + Mathf.Max(1f, speedMultiplier).ToString("0.0") + "   " + LocalizationManager.T(LocalizationKey.Best) + " " + Mathf.FloorToInt(bestDistance) + "m";
             SetHudProgress(_hudProgressFill, Mathf.InverseLerp(1f, 3f, Mathf.Max(1f, speedMultiplier)), 346f);
             _hudMistakeIconsText.text = FormatMistakeIcons(safeWrongCount, safeWrongLimit);
             SetCurrentVisual(profile);
@@ -440,7 +683,7 @@ namespace ColorGateRush
 
             if (_hudCurrentText != null)
             {
-                _hudCurrentText.text = "현재  " + profile.HudLabel;
+                _hudCurrentText.text = LocalizationManager.T(LocalizationKey.Current) + "  " + LocalizationManager.ColorName(profile.ColorId) + " / " + LocalizationManager.ShapeName(profile.ShapeType);
             }
         }
 
@@ -551,16 +794,16 @@ namespace ColorGateRush
             scaler.matchWidthOrHeight = 1f;
             canvasGo.AddComponent<GraphicRaycaster>();
 
+            _titlePanel = CreateTitlePanel(canvasGo.transform);
             _menuPanel = CreateMenuPanel(canvasGo.transform);
             _stageSelectPanel = CreateStageSelectPanel(canvasGo.transform);
             _rulesPanel = CreateRulesPanel(canvasGo.transform);
             _settingsPanel = CreateSettingsPanel(canvasGo.transform);
-            _playtestStatsPanel = CreatePlaytestStatsPanel(canvasGo.transform);
             _tutorialPanel = CreateTutorialPanel(canvasGo.transform);
             _hudPanel = CreateHudPanel(canvasGo.transform);
             _pausePanel = CreatePausePanel(canvasGo.transform);
             _resultPanel = CreateResultPanel(canvasGo.transform);
-            SetPanel(_menuPanel);
+            SetPanel(_titlePanel);
         }
 
         // Ensures uGUI has an input module compatible with the active project input backend.
@@ -584,11 +827,11 @@ namespace ColorGateRush
         // Activates one root panel while hiding the rest.
         private void SetPanel(GameObject activePanel)
         {
+            _titlePanel.SetActive(_titlePanel == activePanel);
             _menuPanel.SetActive(_menuPanel == activePanel);
             _stageSelectPanel.SetActive(_stageSelectPanel == activePanel);
             _rulesPanel.SetActive(_rulesPanel == activePanel);
             _settingsPanel.SetActive(_settingsPanel == activePanel);
-            _playtestStatsPanel.SetActive(_playtestStatsPanel == activePanel);
             _tutorialPanel.SetActive(_tutorialPanel == activePanel);
             _hudPanel.SetActive(_hudPanel == activePanel);
             _pausePanel.SetActive(_pausePanel == activePanel);
@@ -599,6 +842,31 @@ namespace ColorGateRush
             }
         }
 
+        // Builds the launch title screen using the bundled user-provided title art.
+        private GameObject CreateTitlePanel(Transform parent)
+        {
+            GameObject panel = CreatePanel(parent, "TitleScreenPanel", Color.black);
+            Button tapButton = panel.AddComponent<Button>();
+            tapButton.transition = Selectable.Transition.None;
+            tapButton.onClick.AddListener(() => _onTitleContinue?.Invoke());
+
+            GameObject imageGo = new GameObject("TitleScreenImage");
+            imageGo.transform.SetParent(panel.transform, false);
+            RectTransform imageRect = imageGo.AddComponent<RectTransform>();
+            imageRect.anchorMin = Vector2.zero;
+            imageRect.anchorMax = Vector2.one;
+            imageRect.offsetMin = Vector2.zero;
+            imageRect.offsetMax = Vector2.zero;
+            Image image = imageGo.AddComponent<Image>();
+            image.raycastTarget = false;
+            Sprite sprite = LoadTitleScreenSprite();
+            image.sprite = sprite;
+            image.color = sprite != null ? Color.white : new Color(0.02f, 0.03f, 0.10f, 1f);
+            image.type = Image.Type.Simple;
+            image.preserveAspect = false;
+            return panel;
+        }
+
         // Builds the title menu with start and rules buttons.
         private GameObject CreateMenuPanel(Transform parent)
         {
@@ -606,15 +874,14 @@ namespace ColorGateRush
             CreateMenuBackground(panel.transform);
             Text titleText = CreateText(panel.transform, "TitleText", new Vector2(0f, 390f), TextAnchor.MiddleCenter, 86, new Vector2(900f, 140f), "Color Gate Rush");
             AddTextShadow(titleText);
-            Text subtitleText = CreateText(panel.transform, "SubtitleText", new Vector2(0f, 285f), TextAnchor.MiddleCenter, 34, new Vector2(820f, 100f), "색을 바꾸며 달리고, 같은 색 샤드를 모으세요");
+            Text subtitleText = CreateLocalizedText(panel.transform, "SubtitleText", new Vector2(0f, 285f), TextAnchor.MiddleCenter, 34, new Vector2(820f, 100f), LocalizationKey.TitleSubtitle);
             AddTextShadow(subtitleText);
-            CreateButton(panel.transform, "StartButton", new Vector2(0f, 145f), "시작", () => _onStart?.Invoke());
-            CreateButton(panel.transform, "EndlessModeButton", new Vector2(0f, 25f), "Endless Mode", () => _onStartEndless?.Invoke());
-            CreateButton(panel.transform, "RulesButton", new Vector2(0f, -95f), "플레이 방법", () => _onRules?.Invoke());
-            CreateButton(panel.transform, "SettingsButton", new Vector2(0f, -215f), "설정", () => _onSettings?.Invoke());
-            CreateButton(panel.transform, "PlaytestStatsButton", new Vector2(0f, -335f), "플레이테스트 통계", () => _onPlaytestStats?.Invoke());
-            CreateButton(panel.transform, "QuitButton", new Vector2(0f, -475f), "게임 종료", () => _onQuit?.Invoke());
-            _menuNoticeText = CreateText(panel.transform, "MenuNoticeText", new Vector2(0f, -585f), TextAnchor.MiddleCenter, 28, new Vector2(860f, 80f), string.Empty);
+            CreateLocalizedButton(panel.transform, "StartButton", new Vector2(0f, 145f), LocalizationKey.Start, () => _onStart?.Invoke());
+            CreateLocalizedButton(panel.transform, "EndlessModeButton", new Vector2(0f, 25f), LocalizationKey.EndlessMode, () => _onStartEndless?.Invoke());
+            CreateLocalizedButton(panel.transform, "RulesButton", new Vector2(0f, -95f), LocalizationKey.Rules, () => _onRules?.Invoke());
+            CreateLocalizedButton(panel.transform, "SettingsButton", new Vector2(0f, -215f), LocalizationKey.Settings, () => _onSettings?.Invoke());
+            CreateLocalizedButton(panel.transform, "QuitButton", new Vector2(0f, -355f), LocalizationKey.Quit, () => _onQuit?.Invoke());
+            _menuNoticeText = CreateText(panel.transform, "MenuNoticeText", new Vector2(0f, -495f), TextAnchor.MiddleCenter, 28, new Vector2(860f, 80f), string.Empty);
             AddTextShadow(_menuNoticeText);
             return panel;
         }
@@ -649,19 +916,31 @@ namespace ColorGateRush
             overlayImage.raycastTarget = false;
         }
 
+        // Loads the Resources-backed title screen with a Texture2D fallback for import setting changes.
+        private static Sprite LoadTitleScreenSprite()
+        {
+            return LoadResourceSprite(TitleScreenResourcePath, "Title screen image");
+        }
+
         // Loads the Resources-backed menu background with a Texture2D fallback for import setting changes.
         private static Sprite LoadMainMenuBackgroundSprite()
         {
-            Sprite sprite = Resources.Load<Sprite>(MainMenuBackgroundResourcePath);
+            return LoadResourceSprite(MainMenuBackgroundResourcePath, "Main menu background image");
+        }
+
+        // Loads a Resources sprite and falls back to creating a Sprite from a Texture2D import.
+        private static Sprite LoadResourceSprite(string resourcePath, string label)
+        {
+            Sprite sprite = Resources.Load<Sprite>(resourcePath);
             if (sprite != null)
             {
                 return sprite;
             }
 
-            Texture2D texture = Resources.Load<Texture2D>(MainMenuBackgroundResourcePath);
+            Texture2D texture = Resources.Load<Texture2D>(resourcePath);
             if (texture == null)
             {
-                Debug.LogWarning("Main menu background image missing from Resources: " + MainMenuBackgroundResourcePath);
+                Debug.LogWarning(label + " missing from Resources: " + resourcePath);
                 return null;
             }
 
@@ -676,7 +955,7 @@ namespace ColorGateRush
         private GameObject CreateStageSelectPanel(Transform parent)
         {
             GameObject panel = CreatePanel(parent, "StageSelectPanel", ScreenPanelColor(0.94f));
-            CreateText(panel.transform, "StageSelectTitleText", new Vector2(0f, 430f), TextAnchor.MiddleCenter, 64, new Vector2(900f, 100f), "스테이지 선택");
+            CreateLocalizedText(panel.transform, "StageSelectTitleText", new Vector2(0f, 430f), TextAnchor.MiddleCenter, 64, new Vector2(900f, 100f), LocalizationKey.StageSelect);
 
             GameObject scrollView = new GameObject("StageScrollView");
             scrollView.transform.SetParent(panel.transform, false);
@@ -725,7 +1004,7 @@ namespace ColorGateRush
             scroll.movementType = ScrollRect.MovementType.Elastic;
             scroll.scrollSensitivity = 28f;
             _stageButtonRoot = root.transform;
-            CreateButton(panel.transform, "StageBackButton", new Vector2(0f, -430f), "메인 메뉴", () => _onMainMenu?.Invoke());
+            CreateLocalizedButton(panel.transform, "StageBackButton", new Vector2(0f, -430f), LocalizationKey.MainMenu, () => _onMainMenu?.Invoke());
             return panel;
         }
 
@@ -751,8 +1030,8 @@ namespace ColorGateRush
                 bool unlocked = stage.StageIndex <= unlockedStage;
                 int stageIndex = stage.StageIndex;
                 string label = unlocked
-                    ? "Stage " + stage.StageIndex + " " + StarsText(getBestStars(stage.StageIndex))
-                    : "Stage " + stage.StageIndex + " 이전 클리어";
+                    ? LocalizationManager.T(LocalizationKey.StageLabel, stage.StageIndex) + " " + StarsText(getBestStars(stage.StageIndex))
+                    : LocalizationManager.T(LocalizationKey.StageLockedLabel, stage.StageIndex);
                 Button button = CreateButton(_stageButtonRoot, "StageButton_" + stage.StageIndex, Vector2.zero, label, () => _onStageSelected?.Invoke(stageIndex));
                 button.interactable = unlocked;
                 if (!unlocked)
@@ -766,26 +1045,9 @@ namespace ColorGateRush
         private GameObject CreateRulesPanel(Transform parent)
         {
             GameObject panel = CreatePanel(parent, "RulesPanel", ScreenPanelColor(0.94f));
-            CreateText(panel.transform, "RulesTitleText", new Vector2(0f, 430f), TextAnchor.MiddleCenter, 64, new Vector2(900f, 100f), "플레이 방법");
-            string rules = "색상과 모양이 같은 샤드를 먹으면 점수를 얻습니다. +" + GameConstants.SameColorShardScore + " x 콤보\n"
-                + "연속 수집 콤보가 오르면 점수와 효과음이 조금 커집니다.\n"
-                + "다른 색 샤드를 3번 먹으면 실패합니다.\n"
-                + "남은 기회는 HUD의 아이콘으로 확인합니다.\n"
-                + "Endless Mode도 같은 규칙으로 다른 색 샤드 3회째에 기록 종료됩니다.\n"
-                + "게이트를 통과하면 플레이어 색과 목표 모양이 바뀝니다. +" + GameConstants.GateScore + "\n"
-                + "현재 목표 색상/모양은 HUD와 플레이어 주변 accent에서 확인합니다.\n"
-                + "장애물에 부딪히면 즉시 실패합니다. -" + GameConstants.ObstaclePenalty + "\n"
-                + "피니시에 도달하면 클리어하고 별 1개를 얻습니다.\n"
-                + "★2/★3 목표 점수는 플레이 중 HUD에서 확인합니다.\n"
-                + "★2는 ★3 목표 점수의 2/3 이상입니다.\n"
-                + "클리어하면 다음 스테이지가 열립니다.\n"
-                + "★3은 거의 완벽한 수집 보상입니다. 놓친 샤드가 있으면 어려울 수 있습니다.\n"
-                + "Endless Mode는 점점 빨라지는 기록 도전이며 별점/해금과 독립입니다.\n"
-                + "Pause: 버튼 또는 ESC/P, Retry: R, 메뉴: M\n\n"
-                + "조작: A/D 또는 ←/→\n"
-                + "모바일: 좌우 스와이프 또는 화면 좌우 탭";
-            CreateText(panel.transform, "RulesBodyText", new Vector2(0f, 65f), TextAnchor.MiddleLeft, 34, new Vector2(880f, 660f), rules);
-            CreateButton(panel.transform, "RulesBackButton", new Vector2(0f, -420f), "메인 메뉴", () => _onMainMenu?.Invoke());
+            CreateLocalizedText(panel.transform, "RulesTitleText", new Vector2(0f, 430f), TextAnchor.MiddleCenter, 64, new Vector2(900f, 100f), LocalizationKey.RulesTitle);
+            CreateLocalizedText(panel.transform, "RulesBodyText", new Vector2(0f, 65f), TextAnchor.MiddleLeft, 34, new Vector2(880f, 660f), LocalizationKey.RulesBody);
+            CreateLocalizedButton(panel.transform, "RulesBackButton", new Vector2(0f, -420f), LocalizationKey.MainMenu, () => _onMainMenu?.Invoke());
             return panel;
         }
 
@@ -793,24 +1055,57 @@ namespace ColorGateRush
         private GameObject CreateSettingsPanel(Transform parent)
         {
             GameObject panel = CreatePanel(parent, "SettingsPanel", ScreenPanelColor(0.94f));
-            CreateText(panel.transform, "SettingsTitleText", new Vector2(0f, 430f), TextAnchor.MiddleCenter, 64, new Vector2(900f, 100f), "설정");
-            _musicButtonText = CreateButton(panel.transform, "MusicToggleButton", new Vector2(0f, 305f), "Music", () => _onToggleMusic?.Invoke()).GetComponentInChildren<Text>();
-            _musicVolumeButtonText = CreateText(panel.transform, "MusicVolumeLabel", new Vector2(0f, 220f), TextAnchor.MiddleCenter, 34, new Vector2(760f, 52f), "Music Vol");
+            CreateLocalizedText(panel.transform, "SettingsTitleText", new Vector2(0f, 430f), TextAnchor.MiddleCenter, 64, new Vector2(900f, 100f), LocalizationKey.Settings);
+            _settingsGeneralTabButton = CreateSettingsTabButton(panel.transform, "SettingsGeneralTab", new Vector2(-240f, 305f), LocalizationKey.General, SettingsTab.General);
+            _settingsLanguageTabButton = CreateSettingsTabButton(panel.transform, "SettingsLanguageTab", new Vector2(0f, 305f), LocalizationKey.Language, SettingsTab.Language);
+            _settingsDataTabButton = CreateSettingsTabButton(panel.transform, "SettingsDataTab", new Vector2(240f, 305f), LocalizationKey.Data, SettingsTab.Data);
+
+            _settingsGeneralSection = CreateSettingsSection(panel.transform, "SettingsGeneralSection");
+            GameObject musicGroup = CreateSettingsOptionGroup(_settingsGeneralSection.transform, "MusicVolumeGroup", new Vector2(0f, 155f), new Vector2(SettingsContentWidth, 232f));
+            Button musicButton = CreateButton(musicGroup.transform, "MusicToggleButton", new Vector2(0f, 72f), "Music", () => _onToggleMusic?.Invoke());
+            ConfigureSettingsControlButton(musicButton, new Vector2(SettingsContentWidth, SettingsPrimaryButtonHeight), 34);
+            _musicButtonText = musicButton.GetComponentInChildren<Text>();
+            _musicVolumeButtonText = CreateText(musicGroup.transform, "MusicVolumeLabel", new Vector2(0f, -2f), TextAnchor.MiddleCenter, 30, new Vector2(SettingsContentWidth, 44f), LocalizationManager.T(LocalizationKey.MusicVolume));
             AddTextShadow(_musicVolumeButtonText);
-            _musicVolumeSlider = CreateSlider(panel.transform, "MusicVolumeSlider", new Vector2(0f, 165f), GameSettings.MusicVolume, HandleMusicVolumeChanged);
-            _sfxButtonText = CreateButton(panel.transform, "SfxToggleButton", new Vector2(0f, 70f), "SFX", () => _onToggleSfx?.Invoke()).GetComponentInChildren<Text>();
-            _sfxVolumeButtonText = CreateText(panel.transform, "SfxVolumeLabel", new Vector2(0f, -15f), TextAnchor.MiddleCenter, 34, new Vector2(760f, 52f), "SFX Vol");
+            _musicVolumeSlider = CreateSlider(musicGroup.transform, "MusicVolumeSlider", new Vector2(0f, -86f), GameSettings.MusicVolume, HandleMusicVolumeChanged);
+
+            GameObject sfxGroup = CreateSettingsOptionGroup(_settingsGeneralSection.transform, "SfxVolumeGroup", new Vector2(0f, -112f), new Vector2(SettingsContentWidth, 232f));
+            Button sfxButton = CreateButton(sfxGroup.transform, "SfxToggleButton", new Vector2(0f, 72f), "SFX", () => _onToggleSfx?.Invoke());
+            ConfigureSettingsControlButton(sfxButton, new Vector2(SettingsContentWidth, SettingsPrimaryButtonHeight), 34);
+            _sfxButtonText = sfxButton.GetComponentInChildren<Text>();
+            _sfxVolumeButtonText = CreateText(sfxGroup.transform, "SfxVolumeLabel", new Vector2(0f, -2f), TextAnchor.MiddleCenter, 30, new Vector2(SettingsContentWidth, 44f), LocalizationManager.T(LocalizationKey.SfxVolume));
             AddTextShadow(_sfxVolumeButtonText);
-            _sfxVolumeSlider = CreateSlider(panel.transform, "SfxVolumeSlider", new Vector2(0f, -70f), GameSettings.SfxVolume, HandleSfxVolumeChanged);
-            _cameraShakeButtonText = CreateButton(panel.transform, "CameraShakeToggleButton", new Vector2(0f, -180f), "Camera", () => _onToggleCameraShake?.Invoke()).GetComponentInChildren<Text>();
-            _colorAssistButtonText = CreateButton(panel.transform, "ColorAssistToggleButton", new Vector2(0f, -290f), "Assist", () => _onToggleColorAssist?.Invoke()).GetComponentInChildren<Text>();
-            CreateButton(panel.transform, "ResetProgressButton", new Vector2(-255f, -395f), "진행 초기화", ShowResetConfirm);
-            CreateButton(panel.transform, "ResetEndlessRecordsButton", new Vector2(255f, -395f), "Endless 기록", ShowEndlessResetConfirm);
-            CreateButton(panel.transform, "SettingsBackButton", new Vector2(0f, -515f), "메인 메뉴", () => _onMainMenu?.Invoke());
+            _sfxVolumeSlider = CreateSlider(sfxGroup.transform, "SfxVolumeSlider", new Vector2(0f, -86f), GameSettings.SfxVolume, HandleSfxVolumeChanged);
+            Button cameraShakeButton = CreateButton(_settingsGeneralSection.transform, "CameraShakeToggleButton", new Vector2(-144f, -330f), "Camera", () => _onToggleCameraShake?.Invoke());
+            ConfigureSettingsControlButton(cameraShakeButton, new Vector2(SettingsPairButtonWidth, SettingsPrimaryButtonHeight), 27);
+            _cameraShakeButtonText = cameraShakeButton.GetComponentInChildren<Text>();
+            Button colorAssistButton = CreateButton(_settingsGeneralSection.transform, "ColorAssistToggleButton", new Vector2(144f, -330f), "Assist", () => _onToggleColorAssist?.Invoke());
+            ConfigureSettingsControlButton(colorAssistButton, new Vector2(SettingsPairButtonWidth, SettingsPrimaryButtonHeight), 27);
+            _colorAssistButtonText = colorAssistButton.GetComponentInChildren<Text>();
+
+            _settingsLanguageSection = CreateSettingsSection(panel.transform, "SettingsLanguageSection");
+            _languageLabelText = CreateLocalizedText(_settingsLanguageSection.transform, "LanguageLabel", new Vector2(0f, 130f), TextAnchor.MiddleCenter, 38, new Vector2(SettingsContentWidth, 60f), LocalizationKey.Language);
+            AddTextShadow(_languageLabelText);
+            _koreanLanguageButton = CreateLocalizedButton(_settingsLanguageSection.transform, "KoreanLanguageButton", new Vector2(-144f, 20f), LocalizationKey.Korean, () => SetLanguage(Language.Korean));
+            ConfigureSettingsControlButton(_koreanLanguageButton, new Vector2(SettingsPairButtonWidth, SettingsPrimaryButtonHeight), 30);
+            _englishLanguageButton = CreateLocalizedButton(_settingsLanguageSection.transform, "EnglishLanguageButton", new Vector2(144f, 20f), LocalizationKey.English, () => SetLanguage(Language.English));
+            ConfigureSettingsControlButton(_englishLanguageButton, new Vector2(SettingsPairButtonWidth, SettingsPrimaryButtonHeight), 30);
+
+            _settingsDataSection = CreateSettingsSection(panel.transform, "SettingsDataSection");
+            Button resetProgressButton = CreateLocalizedButton(_settingsDataSection.transform, "ResetProgressButton", new Vector2(0f, 130f), LocalizationKey.StageProgressReset, ShowResetConfirm);
+            ConfigureSettingsControlButton(resetProgressButton, new Vector2(SettingsContentWidth, SettingsPrimaryButtonHeight), 30);
+            Button resetEndlessButton = CreateLocalizedButton(_settingsDataSection.transform, "ResetEndlessRecordsButton", new Vector2(0f, 20f), LocalizationKey.ResetEndlessRecords, ShowEndlessResetConfirm);
+            ConfigureSettingsControlButton(resetEndlessButton, new Vector2(SettingsContentWidth, SettingsPrimaryButtonHeight), 30);
+            Text irreversibleText = CreateLocalizedText(_settingsDataSection.transform, "SettingsDataWarningText", new Vector2(0f, -120f), TextAnchor.MiddleCenter, 30, new Vector2(SettingsContentWidth, 96f), LocalizationKey.ResetCannotBeUndone);
+            AddTextShadow(irreversibleText);
+
+            Button backButton = CreateLocalizedButton(panel.transform, "SettingsBackButton", new Vector2(0f, SettingsBottomActionY), LocalizationKey.MainMenu, () => _onMainMenu?.Invoke());
+            ConfigureSettingsControlButton(backButton, new Vector2(SettingsContentWidth, SettingsPrimaryButtonHeight), 32);
             _resetConfirmPanel = CreateResetConfirmPanel(panel.transform);
             _resetConfirmPanel.SetActive(false);
             _endlessResetConfirmPanel = CreateEndlessResetConfirmPanel(panel.transform);
             _endlessResetConfirmPanel.SetActive(false);
+            ShowSettingsTab(SettingsTab.General);
             return panel;
         }
 
@@ -818,9 +1113,9 @@ namespace ColorGateRush
         private GameObject CreateResetConfirmPanel(Transform parent)
         {
             GameObject panel = CreatePanel(parent, "ResetConfirmPanel", ScreenPanelColor(0.86f));
-            CreateText(panel.transform, "ResetConfirmText", new Vector2(0f, 70f), TextAnchor.MiddleCenter, 38, new Vector2(860f, 160f), "CGR 진행 데이터만 초기화할까요?");
-            CreateButton(panel.transform, "ResetConfirmYesButton", new Vector2(-250f, -90f), "초기화", () => _onResetProgress?.Invoke());
-            CreateButton(panel.transform, "ResetConfirmNoButton", new Vector2(250f, -90f), "취소", () => _resetConfirmPanel.SetActive(false));
+            CreateLocalizedText(panel.transform, "ResetConfirmText", new Vector2(0f, 70f), TextAnchor.MiddleCenter, 38, new Vector2(860f, 160f), LocalizationKey.ResetProgressConfirm);
+            CreateLocalizedButton(panel.transform, "ResetConfirmYesButton", new Vector2(-250f, -90f), LocalizationKey.Reset, () => _onResetProgress?.Invoke());
+            CreateLocalizedButton(panel.transform, "ResetConfirmNoButton", new Vector2(250f, -90f), LocalizationKey.Cancel, () => _resetConfirmPanel.SetActive(false));
             return panel;
         }
 
@@ -835,9 +1130,9 @@ namespace ColorGateRush
         private GameObject CreateEndlessResetConfirmPanel(Transform parent)
         {
             GameObject panel = CreatePanel(parent, "EndlessResetConfirmPanel", ScreenPanelColor(0.86f));
-            CreateText(panel.transform, "EndlessResetConfirmText", new Vector2(0f, 70f), TextAnchor.MiddleCenter, 38, new Vector2(860f, 160f), "Endless 최고 기록만 초기화할까요?");
-            CreateButton(panel.transform, "EndlessResetConfirmYesButton", new Vector2(-250f, -90f), "기록 초기화", () => _onResetEndlessRecords?.Invoke());
-            CreateButton(panel.transform, "EndlessResetConfirmNoButton", new Vector2(250f, -90f), "취소", () => _endlessResetConfirmPanel.SetActive(false));
+            CreateLocalizedText(panel.transform, "EndlessResetConfirmText", new Vector2(0f, 70f), TextAnchor.MiddleCenter, 38, new Vector2(860f, 160f), LocalizationKey.ResetEndlessConfirm);
+            CreateLocalizedButton(panel.transform, "EndlessResetConfirmYesButton", new Vector2(-250f, -90f), LocalizationKey.ResetRecords, () => _onResetEndlessRecords?.Invoke());
+            CreateLocalizedButton(panel.transform, "EndlessResetConfirmNoButton", new Vector2(250f, -90f), LocalizationKey.Cancel, () => _endlessResetConfirmPanel.SetActive(false));
             return panel;
         }
 
@@ -848,105 +1143,39 @@ namespace ColorGateRush
             _endlessResetConfirmPanel.SetActive(true);
         }
 
-        // Builds a scrollable local-only playtest stats panel for stage-by-stage review.
-        private GameObject CreatePlaytestStatsPanel(Transform parent)
-        {
-            GameObject panel = CreatePanel(parent, "PlaytestStatsPanel", ScreenPanelColor(0.94f));
-            CreateText(panel.transform, "PlaytestStatsTitleText", new Vector2(0f, 430f), TextAnchor.MiddleCenter, 60, new Vector2(900f, 100f), "플레이테스트 통계");
-
-            GameObject scrollView = new GameObject("PlaytestStatsScrollView");
-            scrollView.transform.SetParent(panel.transform, false);
-            RectTransform scrollRect = scrollView.AddComponent<RectTransform>();
-            scrollRect.anchorMin = new Vector2(0.5f, 0.5f);
-            scrollRect.anchorMax = new Vector2(0.5f, 0.5f);
-            scrollRect.pivot = new Vector2(0.5f, 0.5f);
-            scrollRect.sizeDelta = new Vector2(930f, 700f);
-            scrollRect.anchoredPosition = new Vector2(0f, 0f);
-            Image scrollImage = scrollView.AddComponent<Image>();
-            scrollImage.color = HudPanelColor(0.36f);
-
-            GameObject viewport = new GameObject("PlaytestStatsViewport");
-            viewport.transform.SetParent(scrollView.transform, false);
-            RectTransform viewportRect = viewport.AddComponent<RectTransform>();
-            viewportRect.anchorMin = Vector2.zero;
-            viewportRect.anchorMax = Vector2.one;
-            viewportRect.offsetMin = new Vector2(18f, 18f);
-            viewportRect.offsetMax = new Vector2(-18f, -18f);
-            Image viewportImage = viewport.AddComponent<Image>();
-            viewportImage.color = new Color(1f, 1f, 1f, 0.02f);
-            Mask mask = viewport.AddComponent<Mask>();
-            mask.showMaskGraphic = false;
-
-            GameObject content = new GameObject("PlaytestStatsContent");
-            content.transform.SetParent(viewport.transform, false);
-            RectTransform contentRect = content.AddComponent<RectTransform>();
-            contentRect.anchorMin = new Vector2(0f, 1f);
-            contentRect.anchorMax = new Vector2(1f, 1f);
-            contentRect.pivot = new Vector2(0.5f, 1f);
-            contentRect.sizeDelta = new Vector2(0f, 1320f);
-            contentRect.anchoredPosition = Vector2.zero;
-
-            _statsBodyText = CreateText(content.transform, "PlaytestStatsBodyText", Vector2.zero, TextAnchor.UpperLeft, 28, new Vector2(850f, 1320f), string.Empty);
-            AddTextShadow(_statsBodyText);
-
-            ScrollRect scroll = scrollView.AddComponent<ScrollRect>();
-            scroll.viewport = viewportRect;
-            scroll.content = contentRect;
-            scroll.horizontal = false;
-            scroll.vertical = true;
-            scroll.movementType = ScrollRect.MovementType.Elastic;
-            scroll.scrollSensitivity = 28f;
-
-            CreateButton(panel.transform, "ResetPlaytestStatsButton", new Vector2(-255f, -430f), "통계 초기화", ShowStatsResetConfirm);
-            CreateButton(panel.transform, "PlaytestStatsBackButton", new Vector2(255f, -430f), "메인 메뉴", () => _onMainMenu?.Invoke());
-            _statsResetConfirmPanel = CreateStatsResetConfirmPanel(panel.transform);
-            _statsResetConfirmPanel.SetActive(false);
-            return panel;
-        }
-
-        // Rebuilds the playtest stats text from CGR_Stats_ PlayerPrefs keys.
-        private void RebuildPlaytestStats(int stageCount)
-        {
-            StringBuilder builder = new StringBuilder();
-            builder.AppendLine("로컬 저장 통계입니다. 네트워크 전송은 하지 않습니다.");
-            builder.AppendLine("중단은 Pause에서 재시작/메뉴/스테이지 선택으로 나간 횟수입니다.");
-            builder.AppendLine("실패 색한도/장은 다른 색 3회 실패/장애물 실패 횟수입니다.");
-            builder.AppendLine("Endless 최고 점수: " + EndlessRecords.BestScore + " / 최고 거리: " + Mathf.FloorToInt(EndlessRecords.BestDistance) + "m / 시도: " + EndlessRecords.Attempts + " / 색한도 실패: " + EndlessRecords.WrongShardLimitFails);
-            builder.AppendLine();
-            int clampedStageCount = Mathf.Clamp(stageCount, 1, StageManager.TotalStageCount);
-            for (int stage = 1; stage <= clampedStageCount; stage++)
-            {
-                builder.AppendLine(PlaytestStats.BuildSummaryLine(stage));
-            }
-
-            _statsBodyText.text = builder.ToString();
-        }
-
-        // Builds a separate confirmation overlay for playtest stat reset only.
-        private GameObject CreateStatsResetConfirmPanel(Transform parent)
-        {
-            GameObject panel = CreatePanel(parent, "StatsResetConfirmPanel", ScreenPanelColor(0.86f));
-            CreateText(panel.transform, "StatsResetConfirmText", new Vector2(0f, 70f), TextAnchor.MiddleCenter, 38, new Vector2(860f, 160f), "플레이테스트 통계만 초기화할까요?");
-            CreateButton(panel.transform, "StatsResetConfirmYesButton", new Vector2(-250f, -90f), "통계 초기화", () => _onResetPlaytestStats?.Invoke());
-            CreateButton(panel.transform, "StatsResetConfirmNoButton", new Vector2(250f, -90f), "취소", () => _statsResetConfirmPanel.SetActive(false));
-            return panel;
-        }
-
-        // Shows the playtest stat reset confirmation overlay on top of the stats panel.
-        private void ShowStatsResetConfirm()
-        {
-            _statsResetConfirmPanel.SetActive(true);
-        }
-
         // Updates Settings button labels from the current PlayerPrefs values.
         private void RefreshSettingsLabels()
         {
-            _musicButtonText.text = "Music " + (GameSettings.MusicEnabled ? "On" : "Off");
-            _musicVolumeButtonText.text = "Music Vol " + VolumePercent(GameSettings.MusicVolume);
-            _sfxButtonText.text = "SFX " + (GameSettings.SfxEnabled ? "On" : "Off");
-            _sfxVolumeButtonText.text = "SFX Vol " + VolumePercent(GameSettings.SfxVolume);
-            _cameraShakeButtonText.text = "Camera Shake " + (GameSettings.CameraShakeEnabled ? "On" : "Off");
-            _colorAssistButtonText.text = "Color Assist " + (GameSettings.ColorAssistEnabled ? "On" : "Off");
+            if (_musicButtonText != null)
+            {
+                _musicButtonText.text = LocalizationManager.T(LocalizationKey.Music) + " " + LocalizationManager.T(GameSettings.MusicEnabled ? LocalizationKey.On : LocalizationKey.Off);
+            }
+
+            if (_musicVolumeButtonText != null)
+            {
+                _musicVolumeButtonText.text = LocalizationManager.T(LocalizationKey.MusicVolume) + " " + VolumePercent(GameSettings.MusicVolume);
+            }
+
+            if (_sfxButtonText != null)
+            {
+                _sfxButtonText.text = LocalizationManager.T(LocalizationKey.Sfx) + " " + LocalizationManager.T(GameSettings.SfxEnabled ? LocalizationKey.On : LocalizationKey.Off);
+            }
+
+            if (_sfxVolumeButtonText != null)
+            {
+                _sfxVolumeButtonText.text = LocalizationManager.T(LocalizationKey.SfxVolume) + " " + VolumePercent(GameSettings.SfxVolume);
+            }
+
+            if (_cameraShakeButtonText != null)
+            {
+                _cameraShakeButtonText.text = LocalizationManager.T(LocalizationKey.CameraShake) + " " + LocalizationManager.T(GameSettings.CameraShakeEnabled ? LocalizationKey.On : LocalizationKey.Off);
+            }
+
+            if (_colorAssistButtonText != null)
+            {
+                _colorAssistButtonText.text = LocalizationManager.T(LocalizationKey.ColorAssist) + " " + LocalizationManager.T(GameSettings.ColorAssistEnabled ? LocalizationKey.On : LocalizationKey.Off);
+            }
+
             if (_musicVolumeSlider != null)
             {
                 _musicVolumeSlider.SetValueWithoutNotify(GameSettings.MusicVolume);
@@ -962,7 +1191,7 @@ namespace ColorGateRush
         private void HandleMusicVolumeChanged(float value)
         {
             float clamped = Mathf.Clamp01(value);
-            _musicVolumeButtonText.text = "Music Vol " + VolumePercent(clamped);
+            _musicVolumeButtonText.text = LocalizationManager.T(LocalizationKey.MusicVolume) + " " + VolumePercent(clamped);
             _onSetMusicVolume?.Invoke(clamped);
         }
 
@@ -970,7 +1199,7 @@ namespace ColorGateRush
         private void HandleSfxVolumeChanged(float value)
         {
             float clamped = Mathf.Clamp01(value);
-            _sfxVolumeButtonText.text = "SFX Vol " + VolumePercent(clamped);
+            _sfxVolumeButtonText.text = LocalizationManager.T(LocalizationKey.SfxVolume) + " " + VolumePercent(clamped);
             _onSetSfxVolume?.Invoke(clamped);
         }
 
@@ -978,17 +1207,9 @@ namespace ColorGateRush
         private GameObject CreateTutorialPanel(Transform parent)
         {
             GameObject panel = CreatePanel(parent, "TutorialPanel", ScreenPanelColor(0.95f));
-            CreateText(panel.transform, "TutorialTitleText", new Vector2(0f, 360f), TextAnchor.MiddleCenter, 64, new Vector2(900f, 100f), "첫 플레이 안내");
-            string body = "좌우로 이동해 색상과 모양이 같은 샤드를 모으세요.\n"
-                + "게이트를 통과하면 색과 목표 모양이 바뀝니다.\n"
-                + "현재 목표는 좌상단 HUD에서 확인할 수 있습니다.\n"
-                + "다른 색 샤드는 3번 먹으면 실패합니다.\n"
-                + "장애물은 피하세요.\n"
-                + "클리어하면 다음 스테이지가 열립니다.\n"
-                + "별 3개는 완벽에 가까운 도전 목표입니다.\n"
-                + "Pause 버튼 또는 ESC/P로 일시정지할 수 있습니다.";
-            CreateText(panel.transform, "TutorialBodyText", new Vector2(0f, 95f), TextAnchor.MiddleLeft, 40, new Vector2(850f, 420f), body);
-            CreateButton(panel.transform, "TutorialOkButton", new Vector2(0f, -315f), "확인", () => _onTutorialOk?.Invoke());
+            CreateLocalizedText(panel.transform, "TutorialTitleText", new Vector2(0f, 360f), TextAnchor.MiddleCenter, 64, new Vector2(900f, 100f), LocalizationKey.TutorialTitle);
+            CreateLocalizedText(panel.transform, "TutorialBodyText", new Vector2(0f, 95f), TextAnchor.MiddleLeft, 40, new Vector2(850f, 420f), LocalizationKey.TutorialBody);
+            CreateLocalizedButton(panel.transform, "TutorialOkButton", new Vector2(0f, -315f), LocalizationKey.Confirm, () => _onTutorialOk?.Invoke());
             return panel;
         }
 
@@ -1012,9 +1233,9 @@ namespace ColorGateRush
             _hudModeText = CreateAnchoredText(infoPanel.transform, "HudModeText", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(24f, -18f), TextAnchor.UpperLeft, 24, new Vector2(220f, 34f), string.Empty);
             _hudModeText.color = VisualTheme.Current().HudAccentColor;
             AddTextShadow(_hudModeText);
-            Text scoreLabel = CreateAnchoredText(infoPanel.transform, "HudScoreLabelText", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(24f, -52f), TextAnchor.UpperLeft, 22, new Vector2(160f, 30f), "SCORE");
-            scoreLabel.color = new Color(1f, 1f, 1f, 0.72f);
-            AddTextShadow(scoreLabel);
+            _hudScoreLabelText = CreateLocalizedAnchoredText(infoPanel.transform, "HudScoreLabelText", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(24f, -52f), TextAnchor.UpperLeft, 22, new Vector2(160f, 30f), LocalizationKey.ScoreUpper);
+            _hudScoreLabelText.color = new Color(1f, 1f, 1f, 0.72f);
+            AddTextShadow(_hudScoreLabelText);
             _scoreText = CreateAnchoredText(infoPanel.transform, "HudScoreValueText", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(24f, -76f), TextAnchor.UpperLeft, 62, new Vector2(260f, 74f), string.Empty);
             AddTextShadow(_scoreText);
 
@@ -1026,9 +1247,9 @@ namespace ColorGateRush
             _hudProgressText.color = new Color(1f, 0.90f, 0.28f, 1f);
             AddTextShadow(_hudProgressText);
 
-            Text mistakeLabel = CreateAnchoredText(infoPanel.transform, "HudMistakeLabelText", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(24f, -244f), TextAnchor.UpperLeft, 24, new Vector2(78f, 34f), "기회");
-            mistakeLabel.color = new Color(1f, 1f, 1f, 0.72f);
-            AddTextShadow(mistakeLabel);
+            _hudMistakeLabelText = CreateLocalizedAnchoredText(infoPanel.transform, "HudMistakeLabelText", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(24f, -244f), TextAnchor.UpperLeft, 24, new Vector2(92f, 34f), LocalizationKey.Chances);
+            _hudMistakeLabelText.color = new Color(1f, 1f, 1f, 0.72f);
+            AddTextShadow(_hudMistakeLabelText);
             _hudMistakeIconsText = CreateAnchoredText(infoPanel.transform, "HudMistakeIconsText", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(106f, -239f), TextAnchor.UpperLeft, 34, new Vector2(210f, 46f), string.Empty);
             AddTextShadow(_hudMistakeIconsText);
 
@@ -1083,13 +1304,13 @@ namespace ColorGateRush
         private GameObject CreatePausePanel(Transform parent)
         {
             GameObject panel = CreatePanel(parent, "PausePanel", ScreenPanelColor(0.94f));
-            CreateText(panel.transform, "PauseTitleText", new Vector2(0f, 330f), TextAnchor.MiddleCenter, 76, new Vector2(860f, 120f), "일시정지");
+            CreateLocalizedText(panel.transform, "PauseTitleText", new Vector2(0f, 330f), TextAnchor.MiddleCenter, 76, new Vector2(860f, 120f), LocalizationKey.Pause);
             _pauseStageText = CreateText(panel.transform, "PauseStageText", new Vector2(0f, 215f), TextAnchor.MiddleCenter, 42, new Vector2(760f, 80f), string.Empty);
             _pauseScoreText = CreateText(panel.transform, "PauseScoreText", new Vector2(0f, 140f), TextAnchor.MiddleCenter, 38, new Vector2(760f, 80f), string.Empty);
-            CreateButton(panel.transform, "ResumeButton", new Vector2(0f, 25f), "계속하기", () => _onResume?.Invoke());
-            CreateButton(panel.transform, "PauseRetryButton", new Vector2(0f, -105f), "다시 도전", () => _onRestart?.Invoke());
-            CreateButton(panel.transform, "PauseStageSelectButton", new Vector2(0f, -235f), "스테이지 선택", () => _onStageSelect?.Invoke());
-            CreateButton(panel.transform, "PauseMainMenuButton", new Vector2(0f, -365f), "메인 메뉴", () => _onMainMenu?.Invoke());
+            CreateLocalizedButton(panel.transform, "ResumeButton", new Vector2(0f, 25f), LocalizationKey.Resume, () => _onResume?.Invoke());
+            CreateLocalizedButton(panel.transform, "PauseRetryButton", new Vector2(0f, -105f), LocalizationKey.TryAgain, () => _onRestart?.Invoke());
+            CreateLocalizedButton(panel.transform, "PauseStageSelectButton", new Vector2(0f, -235f), LocalizationKey.StageSelect, () => _onStageSelect?.Invoke());
+            CreateLocalizedButton(panel.transform, "PauseMainMenuButton", new Vector2(0f, -365f), LocalizationKey.MainMenu, () => _onMainMenu?.Invoke());
             return panel;
         }
 
@@ -1100,11 +1321,11 @@ namespace ColorGateRush
             _resultTitleText = CreateText(panel.transform, "ResultTitleText", new Vector2(0f, 280f), TextAnchor.MiddleCenter, 82, new Vector2(860f, 130f), string.Empty);
             _resultScoreText = CreateText(panel.transform, "ResultScoreText", new Vector2(0f, 150f), TextAnchor.MiddleCenter, 48, new Vector2(860f, 100f), string.Empty);
             _resultInfoText = CreateText(panel.transform, "ResultInfoText", new Vector2(0f, 10f), TextAnchor.MiddleCenter, 34, new Vector2(860f, 120f), string.Empty);
-            Button restartButton = CreateButton(panel.transform, "RestartButton", new Vector2(0f, -145f), "재시작", () => _onRestart?.Invoke());
+            Button restartButton = CreateButton(panel.transform, "RestartButton", new Vector2(0f, -145f), LocalizationManager.T(LocalizationKey.Restart), () => _onRestart?.Invoke());
             _restartButtonText = restartButton.GetComponentInChildren<Text>();
-            _nextStageButton = CreateButton(panel.transform, "NextStageButton", new Vector2(0f, -265f), "다음 스테이지", () => _onNextStage?.Invoke());
-            CreateButton(panel.transform, "ResultStageButton", new Vector2(-250f, -390f), "스테이지 선택", () => _onStageSelect?.Invoke());
-            CreateButton(panel.transform, "ResultMenuButton", new Vector2(250f, -390f), "메인 메뉴", () => _onMainMenu?.Invoke());
+            _nextStageButton = CreateLocalizedButton(panel.transform, "NextStageButton", new Vector2(0f, -265f), LocalizationKey.NextStage, () => _onNextStage?.Invoke());
+            CreateLocalizedButton(panel.transform, "ResultStageButton", new Vector2(-250f, -390f), LocalizationKey.StageSelect, () => _onStageSelect?.Invoke());
+            CreateLocalizedButton(panel.transform, "ResultMenuButton", new Vector2(250f, -390f), LocalizationKey.MainMenu, () => _onMainMenu?.Invoke());
             return panel;
         }
 
@@ -1208,13 +1429,136 @@ namespace ColorGateRush
             return button;
         }
 
+        // Creates a standard text label that updates from the active localization table.
+        private static Text CreateLocalizedText(Transform parent, string name, Vector2 anchoredPosition, TextAnchor anchor, int fontSize, Vector2 size, LocalizationKey key)
+        {
+            Text text = CreateText(parent, name, anchoredPosition, anchor, fontSize, size, LocalizationManager.T(key));
+            AttachLocalizedText(text, key);
+            return text;
+        }
+
+        // Creates a HUD-anchored text label that updates from the active localization table.
+        private static Text CreateLocalizedAnchoredText(
+            Transform parent,
+            string name,
+            Vector2 anchor,
+            Vector2 pivot,
+            Vector2 anchoredPosition,
+            TextAnchor alignment,
+            int fontSize,
+            Vector2 size,
+            LocalizationKey key)
+        {
+            Text text = CreateAnchoredText(parent, name, anchor, pivot, anchoredPosition, alignment, fontSize, size, LocalizationManager.T(key));
+            AttachLocalizedText(text, key);
+            return text;
+        }
+
+        // Creates a text button whose generated label updates from the active localization table.
+        private static Button CreateLocalizedButton(Transform parent, string name, Vector2 anchoredPosition, LocalizationKey key, Action onClick)
+        {
+            Button button = CreateButton(parent, name, anchoredPosition, LocalizationManager.T(key), onClick);
+            AttachLocalizedText(button.GetComponentInChildren<Text>(), key);
+            return button;
+        }
+
+        // Creates one compact Settings tab button using the same generated uGUI style as other controls.
+        private Button CreateSettingsTabButton(Transform parent, string name, Vector2 anchoredPosition, LocalizationKey key, SettingsTab tab)
+        {
+            Button button = CreateLocalizedButton(parent, name, anchoredPosition, key, () => ShowSettingsTab(tab));
+            RectTransform rect = button.GetComponent<RectTransform>();
+            if (rect != null)
+            {
+                rect.sizeDelta = new Vector2(SettingsTabWidth, 70f);
+            }
+
+            Text text = button.GetComponentInChildren<Text>();
+            if (text != null)
+            {
+                text.fontSize = 30;
+            }
+
+            return button;
+        }
+
+        // Resizes a Settings-only control button without changing the shared button style used by other screens.
+        private static void ConfigureSettingsControlButton(Button button, Vector2 size, int fontSize)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            RectTransform rect = button.GetComponent<RectTransform>();
+            if (rect != null)
+            {
+                rect.sizeDelta = size;
+            }
+
+            Text text = button.GetComponentInChildren<Text>();
+            if (text != null)
+            {
+                text.fontSize = fontSize;
+                RectTransform textRect = text.GetComponent<RectTransform>();
+                if (textRect != null)
+                {
+                    textRect.sizeDelta = size;
+                }
+            }
+        }
+
+        // Creates an empty Settings section root under the tab strip.
+        private static GameObject CreateSettingsSection(Transform parent, string name)
+        {
+            GameObject go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            RectTransform rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = new Vector2(0f, -48f);
+            rect.sizeDelta = new Vector2(720f, 700f);
+            return go;
+        }
+
+        // Creates a Settings-only option group so toggle, label, and slider spacing cannot overlap.
+        private static GameObject CreateSettingsOptionGroup(Transform parent, string name, Vector2 anchoredPosition, Vector2 size)
+        {
+            GameObject go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            RectTransform rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = size;
+            return go;
+        }
+
+        // Attaches the lightweight localization bridge to a generated uGUI Text element.
+        private static void AttachLocalizedText(Text text, LocalizationKey key)
+        {
+            if (text == null)
+            {
+                return;
+            }
+
+            LocalizedText localizedText = text.GetComponent<LocalizedText>();
+            if (localizedText == null)
+            {
+                localizedText = text.gameObject.AddComponent<LocalizedText>();
+            }
+
+            localizedText.Configure(key);
+        }
+
         // Creates a horizontal uGUI slider for precise settings values without external sprites.
         private static Slider CreateSlider(Transform parent, string name, Vector2 anchoredPosition, float value, Action<float> onValueChanged)
         {
             GameObject go = new GameObject(name);
             go.transform.SetParent(parent, false);
             RectTransform rect = go.AddComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(620f, 52f);
+            rect.sizeDelta = new Vector2(SettingsContentWidth, SettingsSliderHeight);
             rect.anchoredPosition = anchoredPosition;
             rect.anchorMin = new Vector2(0.5f, 0.5f);
             rect.anchorMax = new Vector2(0.5f, 0.5f);
@@ -1225,11 +1569,11 @@ namespace ColorGateRush
             slider.maxValue = 1f;
             slider.wholeNumbers = false;
 
-            RectTransform backgroundRect = CreateSliderImage(go.transform, "Background", new Vector2(0f, 0f), new Vector2(620f, 16f), HudPanelColor(0.74f)).rectTransform;
+            RectTransform backgroundRect = CreateSliderImage(go.transform, "Background", new Vector2(0f, 0f), new Vector2(SettingsContentWidth, SettingsSliderTrackHeight), HudPanelColor(0.74f)).rectTransform;
             backgroundRect.anchorMin = new Vector2(0f, 0.5f);
             backgroundRect.anchorMax = new Vector2(1f, 0.5f);
-            backgroundRect.offsetMin = new Vector2(0f, -8f);
-            backgroundRect.offsetMax = new Vector2(0f, 8f);
+            backgroundRect.offsetMin = new Vector2(0f, -SettingsSliderTrackHeight * 0.5f);
+            backgroundRect.offsetMax = new Vector2(0f, SettingsSliderTrackHeight * 0.5f);
 
             GameObject fillArea = new GameObject("Fill Area");
             fillArea.transform.SetParent(go.transform, false);
@@ -1238,11 +1582,11 @@ namespace ColorGateRush
             fillAreaRect.anchorMax = new Vector2(1f, 1f);
             fillAreaRect.offsetMin = new Vector2(0f, 0f);
             fillAreaRect.offsetMax = new Vector2(0f, 0f);
-            Image fill = CreateSliderImage(fillArea.transform, "Fill", Vector2.zero, new Vector2(0f, 22f), ButtonColor());
+            Image fill = CreateSliderImage(fillArea.transform, "Fill", Vector2.zero, new Vector2(0f, SettingsSliderTrackHeight), ButtonColor());
             fill.rectTransform.anchorMin = new Vector2(0f, 0.5f);
             fill.rectTransform.anchorMax = new Vector2(1f, 0.5f);
-            fill.rectTransform.offsetMin = new Vector2(0f, -11f);
-            fill.rectTransform.offsetMax = new Vector2(0f, 11f);
+            fill.rectTransform.offsetMin = new Vector2(0f, -SettingsSliderTrackHeight * 0.5f);
+            fill.rectTransform.offsetMax = new Vector2(0f, SettingsSliderTrackHeight * 0.5f);
 
             GameObject handleArea = new GameObject("Handle Slide Area");
             handleArea.transform.SetParent(go.transform, false);
@@ -1251,7 +1595,7 @@ namespace ColorGateRush
             handleAreaRect.anchorMax = new Vector2(1f, 1f);
             handleAreaRect.offsetMin = new Vector2(0f, 0f);
             handleAreaRect.offsetMax = new Vector2(0f, 0f);
-            Image handle = CreateSliderImage(handleArea.transform, "Handle", Vector2.zero, new Vector2(46f, 46f), VisualTheme.Current().HudTextColor);
+            Image handle = CreateSliderImage(handleArea.transform, "Handle", Vector2.zero, new Vector2(SettingsSliderHandleWidth, SettingsSliderHandleHeight), VisualTheme.Current().HudTextColor);
 
             slider.fillRect = fill.rectTransform;
             slider.handleRect = handle.rectTransform;

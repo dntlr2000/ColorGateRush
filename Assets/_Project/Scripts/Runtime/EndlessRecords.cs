@@ -129,7 +129,7 @@ namespace ColorGateRush
                 newBestDistance);
         }
 
-        // Deletes only Endless record keys and preserves stage progress, settings, and playtest stats.
+        // Deletes only Endless record keys and preserves stage progress, language, and settings.
         public static void Reset()
         {
             PlayerPrefs.DeleteKey(BestScoreKey);

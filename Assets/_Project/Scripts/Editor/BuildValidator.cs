@@ -16,6 +16,7 @@ namespace ColorGateRush.EditorTools
         private const string ScenePath = "Assets/_Project/Scenes/Main.unity";
         private const string MenuBgmAssetPath = "Assets/_Project/Resources/ColorGateRush/Audio/ColorgateRush_Menu.mp3";
         private const string GameplayBgmAssetPath = "Assets/_Project/Resources/ColorGateRush/Audio/ColorgateRush_Ingame.mp3";
+        private const string TitleScreenAssetPath = "Assets/_Project/Resources/ColorGateRush/Images/TitleScreen.png";
         private const string MainMenuBackgroundAssetPath = "Assets/_Project/Resources/ColorGateRush/Images/MainMenuBackground.png";
 
         [MenuItem("Tools/Color Gate Rush/Validate Project")]
@@ -36,7 +37,8 @@ namespace ColorGateRush.EditorTools
             EnsureFinishUsesHudScoreForStars();
             EnsurePauseAndMenuFlowReferences();
             EnsureSettingsAndTutorialReferences();
-            EnsurePlaytestStatsReferences();
+            EnsureLocalizationReferences();
+            EnsureReleaseUiCleanupReferences();
             EnsureEndlessModeReferences();
             EnsureStageWrongShardFailureReferences();
             EnsureStageStartHintReferences();
@@ -111,12 +113,13 @@ namespace ColorGateRush.EditorTools
             AppendValidation(report, "Only approved imported BGM audio and no other imported media/font/prefab assets under Assets/_Project", EnsureNoProjectRuntimeAssets, ref hardFails);
             AppendValidation(report, "No automatic restart patterns", EnsureNoAutomaticRestartReferences, ref hardFails);
             AppendValidation(report, "No forbidden process launch or full PlayerPrefs reset usage", EnsureNoForbiddenProcessOrPrefsUsage, ref hardFails);
-            AppendValidation(report, "Local-only playtest stats hooks", EnsurePlaytestStatsReferences, ref hardFails);
+            AppendValidation(report, "Korean/English runtime localization hooks", EnsureLocalizationReferences, ref hardFails);
+            AppendValidation(report, "Release UI cleanup and Settings sections", EnsureReleaseUiCleanupReferences, ref hardFails);
             AppendValidation(report, "Endless Mode MVP hooks", EnsureEndlessModeReferences, ref hardFails);
             AppendValidation(report, "Shared wrong-shard three-strike rule", EnsureStageWrongShardFailureReferences, ref hardFails);
             AppendValidation(report, "Stage start hint is transient", EnsureStageStartHintReferences, ref hardFails);
             AppendValidation(report, "VisualTheme and HUD readability hooks exist", EnsureVisualPolishReferences, ref hardFails);
-            AppendValidation(report, "Main menu background image is bundled through Resources", EnsureMainMenuBackgroundReferences, ref hardFails);
+            AppendValidation(report, "Title/menu images are bundled through Resources", EnsureMainMenuBackgroundReferences, ref hardFails);
             AppendValidation(report, "Runtime component/material visual safety", EnsureRuntimeVisualsForReport, ref hardFails);
             AppendRuntimeMaterialReferenceReport(report);
             AppendAndroidReadiness(report, ref warnings);
@@ -147,14 +150,6 @@ namespace ColorGateRush.EditorTools
         {
             GameSettings.ResetLocalProgress();
             Debug.Log("Color Gate Rush local CGR_ progress keys reset.");
-        }
-
-        [MenuItem("Tools/Color Gate Rush/Reset Playtest Stats")]
-        // Clears only CGR_Stats_ local playtest counters.
-        public static void ResetPlaytestStats()
-        {
-            PlaytestStats.ResetAll(StageManager.TotalStageCount);
-            Debug.Log("Color Gate Rush local CGR_Stats_ playtest keys reset.");
         }
 
         [MenuItem("Tools/Color Gate Rush/Reset Endless Records")]
@@ -744,78 +739,101 @@ namespace ColorGateRush.EditorTools
             }
         }
 
-        // Verifies local playtest stats are recorded/reset separately from progression and never use network or DeleteAll.
-        private static void EnsurePlaytestStatsReferences()
+        // Verifies release UI no longer exposes local playtest stats and Settings is split into clear sections.
+        private static void EnsureReleaseUiCleanupReferences()
         {
             string statsPath = "Assets/_Project/Scripts/Runtime/PlaytestStats.cs";
             string gameManagerPath = "Assets/_Project/Scripts/Runtime/GameManager.cs";
             string runtimeUiPath = "Assets/_Project/Scripts/Runtime/RuntimeUi.cs";
-            if (!File.Exists(statsPath) || !File.Exists(gameManagerPath) || !File.Exists(runtimeUiPath))
+            string localizationPath = "Assets/_Project/Scripts/Runtime/LocalizationManager.cs";
+            string localizationKeyPath = "Assets/_Project/Scripts/Runtime/LocalizationKey.cs";
+            foreach (string path in new[] { statsPath, gameManagerPath, runtimeUiPath, localizationPath, localizationKeyPath })
             {
-                throw new InvalidOperationException("Missing scripts for playtest stats validation.");
+                if (!File.Exists(path))
+                {
+                    throw new InvalidOperationException("Missing script for release UI cleanup validation: " + path);
+                }
             }
 
             string statsSource = File.ReadAllText(statsPath);
             string gameManagerSource = File.ReadAllText(gameManagerPath);
             string runtimeUiSource = File.ReadAllText(runtimeUiPath);
-            string[] requiredStatsTokens =
+            string localizationSource = File.ReadAllText(localizationPath);
+            string localizationKeySource = File.ReadAllText(localizationKeyPath);
+            string combinedReleaseSource = statsSource + gameManagerSource + runtimeUiSource + localizationSource + localizationKeySource;
+            string[] removedPlaytestTokens =
             {
                 "CGR_Stats_",
-                "CGR_Stats_Stage_",
-                "RecordStageStarted",
-                "RecordCompleted",
-                "RecordFailed",
-                "RecordQuit",
-                "ResetAll",
-                "PlayerPrefs.DeleteKey"
-            };
-
-            foreach (string token in requiredStatsTokens)
-            {
-                if (!statsSource.Contains(token))
-                {
-                    throw new InvalidOperationException("PlaytestStats missing required local stats hook: " + token);
-                }
-            }
-
-            string[] requiredGameManagerTokens =
-            {
+                "PlaytestStatsButton",
+                "PlaytestStatsPanel",
+                "PlaytestStatsScrollView",
+                "ResetPlaytestStatsButton",
+                "StatsResetConfirmPanel",
                 "BeginPlaytestAttempt",
                 "RecordRunCompleted",
                 "RecordRunFailed",
                 "RecordRunQuitIfOpen",
+                "ShowPlaytestStats",
                 "ResetPlaytestStats",
-                "ShowPlaytestStats"
+                "RecordStageStarted",
+                "RecordCompleted",
+                "RecordFailed",
+                "RecordQuit",
+                "PlaytestExitReason"
             };
 
-            foreach (string token in requiredGameManagerTokens)
+            foreach (string token in removedPlaytestTokens)
             {
-                if (!gameManagerSource.Contains(token))
+                if (combinedReleaseSource.Contains(token))
                 {
-                    throw new InvalidOperationException("GameManager missing playtest stats flow hook: " + token);
+                    throw new InvalidOperationException("Release build must not expose or record Playtest Stats token: " + token);
                 }
             }
 
-            string[] requiredUiTokens =
+            string[] requiredSettingsTokens =
             {
-                "PlaytestStatsPanel",
-                "PlaytestStatsButton",
-                "PlaytestStatsScrollView",
-                "ResetPlaytestStatsButton",
-                "StatsResetConfirmPanel"
+                "SettingsTab",
+                "SettingsTab.General",
+                "SettingsTab.Language",
+                "SettingsTab.Data",
+                "CreateSettingsTabButton",
+                "_settingsGeneralSection",
+                "_settingsLanguageSection",
+                "_settingsDataSection",
+                "SettingsContentWidth",
+                "SettingsBottomActionY",
+                "ConfigureSettingsControlButton",
+                "CreateSettingsOptionGroup",
+                "MusicVolumeGroup",
+                "SfxVolumeGroup",
+                "SettingsSliderHeight",
+                "SettingsSliderTrackHeight",
+                "SettingsSliderHandleWidth",
+                "SettingsSliderHandleHeight",
+                "StageProgressReset",
+                "ResetEndlessRecordsButton"
             };
 
-            foreach (string token in requiredUiTokens)
+            foreach (string token in requiredSettingsTokens)
             {
-                if (!runtimeUiSource.Contains(token))
+                if (!runtimeUiSource.Contains(token) && !localizationKeySource.Contains(token))
                 {
-                    throw new InvalidOperationException("RuntimeUi missing playtest stats UI hook: " + token);
+                    throw new InvalidOperationException("Settings must keep General/Language/Data release sections: " + token);
                 }
             }
 
-            if (statsSource.Contains("DeleteAll") || statsSource.Contains("System.Net") || statsSource.Contains("UnityWebRequest"))
+            if (!localizationSource.Contains("스와이프") || !localizationSource.Contains("Swipe left or right"))
             {
-                throw new InvalidOperationException("PlaytestStats must stay local-only and must not call DeleteAll or network APIs.");
+                throw new InvalidOperationException("Rules must describe mobile swipe/tap movement.");
+            }
+
+            string[] forbiddenUserFacingControlTokens = { "A/D", "Arrow", "방향키", "키보드" };
+            foreach (string token in forbiddenUserFacingControlTokens)
+            {
+                if (localizationSource.Contains(token))
+                {
+                    throw new InvalidOperationException("Runtime user-facing Rules must be mobile-first and avoid keyboard wording: " + token);
+                }
             }
         }
 
@@ -866,7 +884,11 @@ namespace ColorGateRush.EditorTools
                 "WrongShardLimit",
                 "RegisterWrongShard",
                 "EndlessFailReason",
-                "FormatMistakeIcons"
+                "FormatMistakeIcons",
+                "WithSeed",
+                "CreateEndlessRunSeed",
+                "_activeEndlessConfig",
+                "_endlessRandomState"
             };
             string combinedSource = configSource + recordsSource + gameManagerSource + levelGeneratorSource + runtimeUiSource + laneRunnerSource;
             foreach (string token in requiredTokens)
@@ -883,6 +905,11 @@ namespace ColorGateRush.EditorTools
                 throw new InvalidOperationException("Endless generation must not create a finish line.");
             }
 
+            if (!beginEndlessSource.Contains("_endlessRandomState = Random.state"))
+            {
+                throw new InvalidOperationException("Endless generation must preserve a per-run Random state instead of sharing unrelated runtime random calls.");
+            }
+
             string endEndlessSource = ExtractSourceWindow(gameManagerSource, "private void EndEndlessRun", 900);
             if (endEndlessSource.Contains("SaveStageResult") || endEndlessSource.Contains("CreateFailedResult") || endEndlessSource.Contains("WouldUnlockNextStage"))
             {
@@ -892,7 +919,7 @@ namespace ColorGateRush.EditorTools
             string updateEndlessSource = ExtractSourceWindow(gameManagerSource, "private void UpdateEndlessRun", 1200);
             if (!updateEndlessSource.Contains("_endlessElapsedTime += Time.deltaTime")
                 || !updateEndlessSource.Contains("ForwardSpeed(_endlessElapsedTime, _endlessDistance)")
-                || !updateEndlessSource.Contains("UpdateEndlessGeneration(_endlessDistance, _endlessConfig, _endlessElapsedTime)"))
+                || !updateEndlessSource.Contains("UpdateEndlessGeneration(_endlessDistance, _activeEndlessConfig, _endlessElapsedTime)"))
             {
                 throw new InvalidOperationException("Endless difficulty must grow from elapsed time and distance without using Time.timeScale.");
             }
@@ -925,6 +952,19 @@ namespace ColorGateRush.EditorTools
             {
                 throw new InvalidOperationException("Endless wrong shard limit should use the shared GameConstants.MaxWrongShardCount value.");
             }
+
+            string startEndlessSource = ExtractSourceWindow(gameManagerSource, "private void StartEndlessRun", 1800);
+            if (!startEndlessSource.Contains("_activeEndlessConfig = _baseEndlessConfig.WithSeed(CreateEndlessRunSeed())")
+                || !startEndlessSource.Contains("seed = _activeEndlessConfig.Seed")
+                || !startEndlessSource.Contains("BeginEndless(this, _activeEndlessConfig)"))
+            {
+                throw new InvalidOperationException("Endless Mode must generate a fresh per-run seed while preserving one seed sequence during the run.");
+            }
+
+            if (!configSource.Contains("EndlessRunConfig WithSeed(int seed)"))
+            {
+                throw new InvalidOperationException("EndlessRunConfig must expose a WithSeed helper for per-run randomization.");
+            }
         }
 
         // Verifies Stage and Endless modes share the three-strike wrong-shard rule without changing stage unlocks.
@@ -934,9 +974,9 @@ namespace ColorGateRush.EditorTools
             string analyzerPath = "Assets/_Project/Scripts/Runtime/StageScoreAnalyzer.cs";
             string rowReportPath = "Assets/_Project/Scripts/Runtime/LevelRowReport.cs";
             string runtimeUiPath = "Assets/_Project/Scripts/Runtime/RuntimeUi.cs";
-            string statsPath = "Assets/_Project/Scripts/Runtime/PlaytestStats.cs";
+            string localizationPath = "Assets/_Project/Scripts/Runtime/LocalizationManager.cs";
             string constantsPath = "Assets/_Project/Scripts/Runtime/GameConstants.cs";
-            foreach (string path in new[] { gameManagerPath, analyzerPath, rowReportPath, runtimeUiPath, statsPath, constantsPath })
+            foreach (string path in new[] { gameManagerPath, analyzerPath, rowReportPath, runtimeUiPath, localizationPath, constantsPath })
             {
                 if (!File.Exists(path))
                 {
@@ -948,7 +988,7 @@ namespace ColorGateRush.EditorTools
             string analyzerSource = File.ReadAllText(analyzerPath);
             string rowReportSource = File.ReadAllText(rowReportPath);
             string runtimeUiSource = File.ReadAllText(runtimeUiPath);
-            string statsSource = File.ReadAllText(statsPath);
+            string localizationSource = File.ReadAllText(localizationPath);
             string constantsSource = File.ReadAllText(constantsPath);
             string collectSource = ExtractSourceWindow(gameManagerSource, "public void HandleCollect", 2600);
             if (!constantsSource.Contains("MaxWrongShardCount = 3"))
@@ -971,10 +1011,9 @@ namespace ColorGateRush.EditorTools
 
             string failStageSource = ExtractSourceWindow(gameManagerSource, "private void FailStageRun", 1800);
             if (!failStageSource.Contains("CreateFailedResult(_currentStage, _score, failReason)")
-                || !failStageSource.Contains("RecordRunFailed(failReason, _wrongShardCount)")
                 || !failStageSource.Contains("StageFailReason.WrongShardLimit"))
             {
-                throw new InvalidOperationException("Stage failure flow must record and show the wrong-shard limit reason without writing stars or unlocks.");
+                throw new InvalidOperationException("Stage failure flow must show the wrong-shard limit reason without writing stars or unlocks.");
             }
 
             if (!analyzerSource.Contains("wrongShardCount")
@@ -991,16 +1030,12 @@ namespace ColorGateRush.EditorTools
             }
 
             if (!runtimeUiSource.Contains("StageFailReasonText")
-                || !runtimeUiSource.Contains("다른 색 샤드를 3번 먹었습니다")
+                || !runtimeUiSource.Contains("WrongShardLimitReason")
                 || !runtimeUiSource.Contains("FormatMistakeIcons")
-                || !runtimeUiSource.Contains("다른 색 샤드를 3번 먹으면 실패합니다"))
+                || !localizationSource.Contains("다른 색 샤드를 3번 먹었습니다")
+                || !localizationSource.Contains("Picking 3 wrong shards fails the run"))
             {
                 throw new InvalidOperationException("Runtime UI must explain and display the shared wrong-shard three-strike rule.");
-            }
-
-            if (!statsSource.Contains("WrongShardLimitFails") || !statsSource.Contains("LastWrongShardCount") || !statsSource.Contains("ObstacleFails"))
-            {
-                throw new InvalidOperationException("PlaytestStats must separate wrong-shard limit failures, last wrong count, and obstacle failures.");
             }
         }
 
@@ -1057,16 +1092,22 @@ namespace ColorGateRush.EditorTools
             }
 
             string[] configureArguments = ExtractMethodCallArguments(gameManagerSource, "_ui.Configure(");
-            if (configureArguments.Length < 8)
+            if (configureArguments.Length < 9)
             {
                 throw new InvalidOperationException("Could not parse GameManager.cs _ui.Configure callback list for menu flow validation.");
             }
 
-            string startRoute = configureArguments[0].Trim();
-            string stageSelectRoute = configureArguments[1].Trim();
-            string stageButtonRoute = configureArguments[7].Trim();
+            string titleRoute = configureArguments[0].Trim();
+            string startRoute = configureArguments[1].Trim();
+            string stageSelectRoute = configureArguments[2].Trim();
+            string stageButtonRoute = configureArguments[8].Trim();
             string[] allowedStageSelectRoutes = { "ShowStageSelect", "EnterStageSelect", "OpenStageSelect" };
             string[] forbiddenDirectStartRoutes = { "StartRun", "StartStage", "StartStageFromSelect", "RestartCurrentRun", "BeginRun", "StartSelectedStage" };
+            if (!ContainsAnyToken(titleRoute, new[] { "ReturnToMainMenu", "ShowMainMenu", "EnterMainMenu" }))
+            {
+                throw new InvalidOperationException("Title screen tap/click should route to Main Menu. Found in GameManager.cs _ui.Configure: " + titleRoute);
+            }
+
             if (ContainsAnyToken(startRoute, forbiddenDirectStartRoutes))
             {
                 throw new InvalidOperationException("Main Menu Start appears to call a direct start route in GameManager.cs _ui.Configure: " + startRoute);
@@ -1097,6 +1138,15 @@ namespace ColorGateRush.EditorTools
             if (ContainsAnyToken(menuPanelSource, new[] { "_onStageSelected", "_onRestart", "StartRun", "StartStage", "RestartCurrentRun", "BeginRun" }))
             {
                 throw new InvalidOperationException("RuntimeUi.cs Main Menu Start panel contains a forbidden direct-start reference.");
+            }
+
+            string titlePanelSource = ExtractSourceWindow(runtimeUiSource, "private GameObject CreateTitlePanel", 1800);
+            if (!gameManagerSource.Contains("private void ShowTitleScreen")
+                || !gameManagerSource.Contains("_state = GameState.Title")
+                || !titlePanelSource.Contains("TitleScreenPanel")
+                || !titlePanelSource.Contains("_onTitleContinue?.Invoke()"))
+            {
+                throw new InvalidOperationException("App launch should show a tap/click title screen before Main Menu. Check GameManager.ShowTitleScreen and RuntimeUi.CreateTitlePanel.");
             }
 
             string stageButtonSource = ExtractSourceWindow(runtimeUiSource, "private void RebuildStageButtons", 2200);
@@ -1245,7 +1295,10 @@ namespace ColorGateRush.EditorTools
                 "MusicVolumeSlider",
                 "SfxToggleButton",
                 "SfxVolumeLabel",
-                "SfxVolumeSlider"
+                "SfxVolumeSlider",
+                "LanguageLabel",
+                "KoreanLanguageButton",
+                "EnglishLanguageButton"
             };
 
             foreach (string token in requiredSettingsUiTokens)
@@ -1259,6 +1312,85 @@ namespace ColorGateRush.EditorTools
             if (!File.Exists(MenuBgmAssetPath) || !File.Exists(GameplayBgmAssetPath))
             {
                 throw new InvalidOperationException("Approved BGM assets are missing from Resources/ColorGateRush/Audio.");
+            }
+        }
+
+        // Verifies the lightweight code-based localization system covers both supported languages.
+        private static void EnsureLocalizationReferences()
+        {
+            string languagePath = "Assets/_Project/Scripts/Runtime/Language.cs";
+            string keyPath = "Assets/_Project/Scripts/Runtime/LocalizationKey.cs";
+            string managerPath = "Assets/_Project/Scripts/Runtime/LocalizationManager.cs";
+            string localizedTextPath = "Assets/_Project/Scripts/Runtime/LocalizedText.cs";
+            string runtimeUiPath = "Assets/_Project/Scripts/Runtime/RuntimeUi.cs";
+            string settingsPath = "Assets/_Project/Scripts/Runtime/GameSettings.cs";
+            string manifestPath = "Packages/manifest.json";
+            string[] requiredFiles = { languagePath, keyPath, managerPath, localizedTextPath, runtimeUiPath, settingsPath, manifestPath };
+            foreach (string path in requiredFiles)
+            {
+                if (!File.Exists(path))
+                {
+                    throw new InvalidOperationException("Missing localization validation input: " + path);
+                }
+            }
+
+            string managerSource = File.ReadAllText(managerPath);
+            string runtimeUiSource = File.ReadAllText(runtimeUiPath);
+            string localizedTextSource = File.ReadAllText(localizedTextPath);
+            string settingsSource = File.ReadAllText(settingsPath);
+            string manifestSource = File.ReadAllText(manifestPath);
+            string[] requiredTokens =
+            {
+                "CGR_Language",
+                "Language.Korean",
+                "Language.English",
+                "OnLanguageChanged",
+                "SetLanguage(Language",
+                "LocalizationManager.T",
+                "CreateLocalizedText",
+                "CreateLocalizedButton",
+                "KoreanLanguageButton",
+                "EnglishLanguageButton",
+                "RefreshLanguageButtons",
+                "LocalizedText"
+            };
+
+            string combinedSource = managerSource + runtimeUiSource + localizedTextSource;
+            foreach (string token in requiredTokens)
+            {
+                if (!combinedSource.Contains(token))
+                {
+                    throw new InvalidOperationException("Localization hook missing: " + token);
+                }
+            }
+
+            if (manifestSource.Contains("com.unity.localization") || combinedSource.Contains("UnityEngine.Localization"))
+            {
+                throw new InvalidOperationException("Unity Localization package must not be used for this lightweight runtime localization pass.");
+            }
+
+            if (settingsSource.Contains("DeleteKey(LocalizationManager.LanguageKey")
+                || settingsSource.Contains("DeleteKey(\"CGR_Language\"")
+                || settingsSource.Contains("PlayerPrefs.DeleteAll"))
+            {
+                throw new InvalidOperationException("Reset Progress must not delete CGR_Language or call PlayerPrefs.DeleteAll.");
+            }
+
+            Array keys = Enum.GetValues(typeof(LocalizationKey));
+            foreach (LocalizationKey key in keys)
+            {
+                if (!LocalizationManager.HasAllTranslations(key))
+                {
+                    throw new InvalidOperationException("Missing Korean or English localization entry for key: " + key);
+                }
+
+                int koreanPlaceholders = LocalizationManager.PlaceholderCount(Language.Korean, key);
+                int englishPlaceholders = LocalizationManager.PlaceholderCount(Language.English, key);
+                if (koreanPlaceholders != englishPlaceholders)
+                {
+                    throw new InvalidOperationException("Localization placeholder mismatch for key " + key + ": Korean="
+                        + koreanPlaceholders + ", English=" + englishPlaceholders);
+                }
             }
         }
 
@@ -1555,6 +1687,7 @@ namespace ColorGateRush.EditorTools
                 "CGR_SimpleLitTrack",
                 "CGR_SimpleLitObstacle",
                 "CGR_SimpleLitFinish",
+                "CGR_SimpleLitPlayer",
                 "CGR_UnlitOpaque",
                 "CGR_UnlitTransparent",
                 "CGR_ParticleUnlit",
@@ -1673,6 +1806,7 @@ namespace ColorGateRush.EditorTools
                 { "CGR_SimpleLitTrack.mat", simpleLitGuid },
                 { "CGR_SimpleLitObstacle.mat", simpleLitGuid },
                 { "CGR_SimpleLitFinish.mat", simpleLitGuid },
+                { "CGR_SimpleLitPlayer.mat", simpleLitGuid },
                 { "CGR_UnlitOpaque.mat", unlitGuid },
                 { "CGR_UnlitTransparent.mat", unlitGuid },
                 { "CGR_ParticleUnlit.mat", particleUnlitGuid }
@@ -2184,6 +2318,7 @@ namespace ColorGateRush.EditorTools
                 }
 
                 EnsureRendererMaterialsAreUsable(generatedRoot, renderer, stage.StageIndex);
+                EnsurePlayerBodyRendererIsLit(generatedRoot, renderer, stage.StageIndex);
             }
 
             foreach (MeshFilter meshFilter in meshFilters)
@@ -2230,6 +2365,45 @@ namespace ColorGateRush.EditorTools
                 {
                     throw new InvalidOperationException("Runtime visual smoke failed: unsupported shader on " + objectPath + " (" + renderer.GetType().Name + "), slot " + i + ", material=" + material.name + ", shader=" + shader.name + ", stage " + stageIndex + ".");
                 }
+            }
+        }
+
+        // Ensures the runner body keeps a lit opaque material and shadow settings after build-compatibility changes.
+        private static void EnsurePlayerBodyRendererIsLit(Transform generatedRoot, MeshRenderer renderer, int stageIndex)
+        {
+            if (renderer == null || renderer.GetComponent<LaneRunnerController>() == null)
+            {
+                return;
+            }
+
+            string objectPath = BuildGeneratedObjectPath(generatedRoot, renderer.transform);
+            Material material = renderer.sharedMaterial;
+            string materialName = material != null ? material.name : "null";
+            string shaderName = material != null && material.shader != null ? material.shader.name : "null";
+            if (renderer.shadowCastingMode != UnityEngine.Rendering.ShadowCastingMode.On || !renderer.receiveShadows)
+            {
+                throw new InvalidOperationException(
+                    "Runtime visual smoke failed: Player body shadow regression on " + objectPath
+                    + ", material=" + materialName
+                    + ", shader=" + shaderName
+                    + ", shadowCastingMode=" + renderer.shadowCastingMode
+                    + ", receiveShadows=" + renderer.receiveShadows
+                    + ", stage " + stageIndex + ".");
+            }
+
+            if (material == null || material.shader == null)
+            {
+                return;
+            }
+
+            if (material.renderQueue >= 3000 || shaderName.IndexOf("Unlit", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                throw new InvalidOperationException(
+                    "Runtime visual smoke failed: Player body must use an opaque lit-capable material on " + objectPath
+                    + ", material=" + materialName
+                    + ", shader=" + shaderName
+                    + ", renderQueue=" + material.renderQueue
+                    + ", stage " + stageIndex + ".");
             }
         }
 
@@ -2298,6 +2472,11 @@ namespace ColorGateRush.EditorTools
         // Verifies the user-provided main menu background is bundled through Resources and referenced by RuntimeUi.
         private static void EnsureMainMenuBackgroundReferences()
         {
+            if (!File.Exists(TitleScreenAssetPath))
+            {
+                throw new InvalidOperationException("Title screen image is missing: " + TitleScreenAssetPath);
+            }
+
             if (!File.Exists(MainMenuBackgroundAssetPath))
             {
                 throw new InvalidOperationException("Main menu background image is missing: " + MainMenuBackgroundAssetPath);
@@ -2310,6 +2489,13 @@ namespace ColorGateRush.EditorTools
             }
 
             string runtimeUiSource = File.ReadAllText(runtimeUiPath);
+            if (!runtimeUiSource.Contains("ColorGateRush/Images/TitleScreen")
+                || !runtimeUiSource.Contains("CreateTitlePanel")
+                || !runtimeUiSource.Contains("LoadTitleScreenSprite"))
+            {
+                throw new InvalidOperationException("RuntimeUi must load the title screen image from Resources before Main Menu.");
+            }
+
             if (!runtimeUiSource.Contains("ColorGateRush/Images/MainMenuBackground")
                 || !runtimeUiSource.Contains("CreateMenuBackground")
                 || !runtimeUiSource.Contains("MainMenuBackgroundReadabilityOverlay"))
@@ -2318,7 +2504,7 @@ namespace ColorGateRush.EditorTools
             }
         }
 
-        // Fails validation if imported media assets outside the approved BGM clips and menu background are placed under the project folder.
+        // Fails validation if imported media assets outside the approved BGM clips and menu/title images are placed under the project folder.
         private static void EnsureNoProjectRuntimeAssets()
         {
             string[] textureGuids = AssetDatabase.FindAssets("t:Texture2D", new[] { "Assets/_Project" });
@@ -2348,17 +2534,17 @@ namespace ColorGateRush.EditorTools
 
             if (disallowedTexturePaths.Count > 0 || disallowedAudioPaths.Count > 0 || modelGuids.Length > 0 || fontGuids.Length > 0 || prefabGuids.Length > 0)
             {
-                throw new InvalidOperationException("Imported media found under Assets/_Project. Only the approved BGM clips and main menu background are allowed: "
-                    + MenuBgmAssetPath + ", " + GameplayBgmAssetPath + ", " + MainMenuBackgroundAssetPath
+                throw new InvalidOperationException("Imported media found under Assets/_Project. Only the approved BGM clips, title screen, and main menu background are allowed: "
+                    + MenuBgmAssetPath + ", " + GameplayBgmAssetPath + ", " + TitleScreenAssetPath + ", " + MainMenuBackgroundAssetPath
                     + ". Extra textures: " + string.Join(", ", disallowedTexturePaths)
                     + ". Extra audio: " + string.Join(", ", disallowedAudioPaths));
             }
         }
 
-        // Allows only the user-provided menu background texture that is intentionally bundled through Resources.
+        // Allows only the user-provided title/menu textures that are intentionally bundled through Resources.
         private static bool IsApprovedProjectTextureAsset(string assetPath)
         {
-            return assetPath == MainMenuBackgroundAssetPath;
+            return assetPath == TitleScreenAssetPath || assetPath == MainMenuBackgroundAssetPath;
         }
 
         // Allows only the two user-provided BGM clips that are intentionally bundled through Resources.
