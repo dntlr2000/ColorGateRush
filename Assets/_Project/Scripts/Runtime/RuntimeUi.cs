@@ -367,7 +367,7 @@ namespace ColorGateRush
             }
         }
 
-        // Shows the launch title image and waits for an explicit tap/click before opening the main menu.
+        // Shows the tap/click title image before the runtime MainMenu.
         public void ShowTitleScreen()
         {
             EnsureCanvas();
@@ -842,7 +842,7 @@ namespace ColorGateRush
             }
         }
 
-        // Builds the launch title screen using the bundled user-provided title art.
+        // Builds the launch title screen from the approved tap-to-start title image.
         private GameObject CreateTitlePanel(Transform parent)
         {
             GameObject panel = CreatePanel(parent, "TitleScreenPanel", Color.black);
@@ -864,7 +864,8 @@ namespace ColorGateRush
             image.sprite = sprite;
             image.color = sprite != null ? Color.white : new Color(0.02f, 0.03f, 0.10f, 1f);
             image.type = Image.Type.Simple;
-            image.preserveAspect = false;
+            image.preserveAspect = true;
+            ApplyFullscreenImageFit(imageGo, sprite);
             return panel;
         }
 
@@ -904,6 +905,7 @@ namespace ColorGateRush
             backgroundImage.color = backgroundSprite != null ? Color.white : new Color(0.02f, 0.03f, 0.10f, 1f);
             backgroundImage.type = Image.Type.Simple;
             backgroundImage.preserveAspect = false;
+            ApplyFullscreenImageCover(backgroundGo, backgroundSprite);
 
             GameObject overlayGo = new GameObject("MainMenuBackgroundReadabilityOverlay");
             overlayGo.transform.SetParent(parent, false);
@@ -917,7 +919,7 @@ namespace ColorGateRush
             overlayImage.raycastTarget = false;
         }
 
-        // Loads the Resources-backed title screen with a Texture2D fallback for import setting changes.
+        // Loads the Resources-backed title image with a Texture2D fallback for import setting changes.
         private static Sprite LoadTitleScreenSprite()
         {
             return LoadResourceSprite(TitleScreenResourcePath, "Title screen image");
@@ -927,6 +929,43 @@ namespace ColorGateRush
         private static Sprite LoadMainMenuBackgroundSprite()
         {
             return LoadResourceSprite(MainMenuBackgroundResourcePath, "Main menu background image");
+        }
+
+        // Preserves imported background aspect ratio while covering the full portrait canvas.
+        private static void ApplyFullscreenImageCover(GameObject imageGo, Sprite sprite)
+        {
+            if (imageGo == null || sprite == null || sprite.rect.height <= 0f)
+            {
+                return;
+            }
+
+            AspectRatioFitter aspectRatioFitter = imageGo.AddComponent<AspectRatioFitter>();
+            aspectRatioFitter.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+            aspectRatioFitter.aspectRatio = sprite.rect.width / sprite.rect.height;
+        }
+
+        // Preserves the full title art on device aspect ratios that differ from the source image.
+        private static void ApplyFullscreenImageFit(GameObject imageGo, Sprite sprite)
+        {
+            if (imageGo == null || sprite == null)
+            {
+                return;
+            }
+
+            RectTransform rect = imageGo.GetComponent<RectTransform>();
+            if (rect != null)
+            {
+                rect.anchorMin = Vector2.zero;
+                rect.anchorMax = Vector2.one;
+                rect.offsetMin = Vector2.zero;
+                rect.offsetMax = Vector2.zero;
+            }
+
+            Image image = imageGo.GetComponent<Image>();
+            if (image != null)
+            {
+                image.preserveAspect = true;
+            }
         }
 
         // Loads a Resources sprite and falls back to creating a Sprite from a Texture2D import.

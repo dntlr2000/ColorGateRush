@@ -271,7 +271,7 @@ namespace ColorGateRush
             return CreateColorShape(parent, name, position, colorId, size, colliderEnabled: false, isTrigger: false);
         }
 
-        // Creates a translucent ground accent that follows the player without adding collision.
+        // Creates a compact translucent ground accent that follows the player without adding collision.
         public static GameObject CreatePlayerAccent(Transform parent, ColorId colorId, Vector3 position)
         {
             GameObject accent = CreateColorShape(
@@ -279,7 +279,7 @@ namespace ColorGateRush
                 "PlayerColorAccent",
                 position,
                 colorId,
-                0.44f,
+                0.34f,
                 colliderEnabled: false,
                 isTrigger: false);
             ApplyPlayerAccentMaterial(accent, colorId);

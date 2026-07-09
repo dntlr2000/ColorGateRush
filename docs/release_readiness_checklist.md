@@ -1,6 +1,6 @@
 # Release Readiness Checklist
 
-Color Gate Rush is ready for manual Android/WebGL build validation after RC QA. This checklist does not require network access, external assets, generated keystores, or command-line builds.
+Color Gate Rush is ready for manual Android/WebGL build validation after RC QA. This checklist does not require network access, external assets, repository-stored keystores, or command-line builds.
 
 For tester-session flow, survey questions, and manual scenario coverage, also see `docs/playtest_checklist.md`.
 
@@ -39,18 +39,35 @@ Hard failures must be fixed before packaging. Warnings identify manual release d
 - No all-obstacle, all-off-color, or mixed all-unsafe row exists.
 - Clear route and near-perfect route both exist.
 
+## Final Release Preparation TODO
+
+- Product Name is `Color Gate Rush`.
+- Company Name is `Nappa Studio`.
+- Android Application Identifier is `com.nappa.colorgaterush`.
+- Bundle Version is `0.9.0`.
+- Android Version Code is `1`. Increment for every later upload after the first internal/test release.
+- Android orientation is portrait-first and landscape autorotation is disabled.
+- App icon is assigned from `Assets/_Project/Art/AppIcon/color_gate_rush_icon_1024.png`.
+- `Tools/Color Gate Rush/Bootstrap Project` reapplies the approved app icon to the default and Android Player Settings icon groups when Unity's icon API is available.
+- The app opens on the approved tap-to-start title screen image, then enters MainMenu by explicit tap/click.
+- Title screen art should fit inside common Android portrait aspect ratios without cropping the logo or tap prompt.
+- Custom splash scene/timer flow is not used by design.
+- Confirm `docs/audio_licenses.md` has Gemini-generated BGM records and resolve Gemini terms/commercial-use TODOs before public distribution.
+- Prepare store copy and screenshot TODOs in `docs/store_listing_draft.md`.
+- Confirm the current Google Play target API requirement in Unity Build Profiles before AAB upload.
+- Keystore/signing is configured outside the repository. Do not commit keystores, passwords, or signing notes.
+
 ## Android Pre-Build Checklist
 
-- Product name is final enough for tester builds. Current static check target: `ColorGateRush`.
-- Company name is not `DefaultCompany`; change it in Unity Player Settings before external RC distribution.
-- Application Identifier is a unique reverse-DNS id, not a Unity template id such as `com.UnityTechnologies.com.unity.template.urpblank`.
-- Bundle version and Android version code are intentionally set. Current static check target: version `0.1.0`, Android version code `1`.
+- Product name is final enough for tester builds. Current static check target: `Color Gate Rush`.
+- Company name is `Nappa Studio`.
+- Application Identifier is `com.nappa.colorgaterush`.
+- Bundle version and Android version code are intentionally set. Current static check target: version `0.9.0`, Android version code `1`.
 - Portrait-only orientation is selected for the vertical runner UI.
 - `Validate Runtime Visuals` passes before device packaging.
 - Runtime generated components use generic component creation, not `AddComponent(string)` or `GameObject.CreatePrimitive`.
 - `Universal Render Pipeline/Lit` is absent from Graphics Settings Always Included Shaders.
 - Runtime base materials exist under `Assets/_Project/Resources/ColorGateRush/Materials`.
-- The approved title screen image exists at `Assets/_Project/Resources/ColorGateRush/Images/TitleScreen.png`.
 - The approved main menu background exists at `Assets/_Project/Resources/ColorGateRush/Images/MainMenuBackground.png`.
 - Pink-material prevention uses Resources material asset references, not full URP shader Always Included entries.
 - Opaque runtime objects use `CGR_SimpleLit*` material references and still show lighting/shadow depth in device builds.
@@ -59,8 +76,9 @@ Hard failures must be fixed before packaging. Warnings identify manual release d
 - Use APK for local device testing.
 - Use Android App Bundle (AAB) for Google Play submission.
 - Keystore, passwords, and signing credentials are created and stored outside the repository.
+- Confirm the Android custom keystore path and upload key alias in Player Settings; passwords must remain private and outside repository files.
 - Do not commit keystore files, passwords, or signing notes.
-- App icon, splash screen, and store screenshots are reviewed; treat placeholder branding as a warning before public submission.
+- App icon is assigned; Unity official splash branding and store screenshots still require manual review before public submission.
 
 ## Android Manual Build Steps
 
@@ -70,6 +88,19 @@ Hard failures must be fixed before packaging. Warnings identify manual release d
 4. For local testing, build an APK with Development Build only when debugging is needed.
 5. For Google Play, build an AAB and sign it with the manually managed keystore.
 6. Install on a physical Android device and run the device test checklist below.
+
+## Google Play Internal Test AAB Checklist
+
+1. Run `Validate Build`, `Validate Runtime Visuals`, `Generate Balance Report`, and `Generate Release Readiness Report`.
+2. Confirm Player Settings: Product `Color Gate Rush`, Company `Nappa Studio`, Package `com.nappa.colorgaterush`, Version `0.9.0`, Version Code `1`, Portrait.
+3. Confirm Android icon preview and launcher icon are assigned from `Assets/_Project/Art/AppIcon/color_gate_rush_icon_1024.png`.
+4. Confirm Target API level satisfies the current Google Play requirement in Unity Build Profiles.
+5. Confirm Scripting Backend/architecture choices are release-appropriate, including ARM64 for Google Play.
+6. Turn Development Build off for the internal-test AAB unless debugging a specific issue.
+7. Confirm custom keystore is selected, upload key alias is selected, and passwords are entered only in Unity/local secure storage.
+8. Build an Android App Bundle (`.aab`) for Google Play internal testing.
+9. Upload the AAB to Play Console internal testing and complete Data Safety, content rating, store listing, screenshots, and tester track setup manually.
+10. After uploading any later AAB/APK, increment Android Version Code before the next upload.
 
 ## WebGL Pre-Build Checklist
 
@@ -157,10 +188,18 @@ Hard failures must be fixed before packaging. Warnings identify manual release d
 - Only these user-provided BGM files are approved imported audio:
   - `Assets/_Project/Resources/ColorGateRush/Audio/ColorgateRush_Menu.mp3`
   - `Assets/_Project/Resources/ColorGateRush/Audio/ColorgateRush_Ingame.mp3`
+- BGM source is recorded as Gemini-generated by user in `docs/audio_licenses.md`; Gemini terms, commercial/game usage permission, and attribution requirements remain a release TODO.
 - Do not add additional BGM/SFX files without an explicit asset/license review.
 - Current SFX remain procedural.
 - Large background/platform polish is deferred to launch or post-launch visual polish; current validation focuses on build compatibility, speed/spacing feel, Quit, and Endless MVP.
-- Imported visual media remains limited to the approved title screen and main menu background images; gameplay objects still use procedural geometry/materials.
+- Imported visual media remains limited to the approved app icon, tap-to-start title image, main menu background image, archived unused splash artwork, and retired unused button texture; gameplay objects still use procedural geometry/materials.
+
+## Store Listing Preparation
+
+- Use `docs/store_listing_draft.md` as the first draft for the Play Console listing.
+- Capture screenshot candidates from the final RC build: Title Screen, Main Menu, Stage gameplay, Endless gameplay, Stage Select, Completed result, Failed result, and Settings Language/Data tabs.
+- Confirm privacy/data declarations manually in Play Console. The current project has no external server calls, analytics SDK, ad SDK, account login, or cloud save integration.
+- Resolve all remaining `TODO` markers in the store listing draft and Gemini BGM license terms before public submission.
 
 ## Save/Progress Test Scenario
 

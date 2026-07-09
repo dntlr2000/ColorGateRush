@@ -15,10 +15,12 @@ This checklist is for gameplay and build-readiness playtests with the two approv
 
 - Confirm Company Name is no longer `DefaultCompany` before external release.
 - Confirm Android Application Identifier is a project-owned reverse-DNS id, not the Unity template id.
-- Confirm Product Name, bundle version, Android version code, and portrait orientation are intentional.
+- Confirm Product Name is `Color Gate Rush`, and bundle version, Android version code, and portrait orientation are intentional.
 - Confirm APK is used for local device tests and AAB is used only for Google Play submission.
 - Confirm Development Build is off for submission builds and keystore/signing files stay outside the repository.
 - Confirm app icon, splash, and store screenshots are still placeholder or explicitly approved for RC use.
+- Confirm `docs/audio_licenses.md` has completed BGM license/source records before any public store submission.
+- Confirm `docs/store_listing_draft.md` TODOs are either resolved or intentionally deferred for internal testing only.
 
 ## Android APK Smoke Test
 
@@ -39,9 +41,9 @@ This checklist is for gameplay and build-readiness playtests with the two approv
 
 ## Language Smoke Test
 
-1. Start in Korean and verify Main Menu, Stage Select, Rules, Settings, HUD, Pause, Result, and Endless text.
+1. Start in Korean, verify the Title Screen appears first, tap through, then verify Main Menu, Stage Select, Rules, Settings, HUD, Pause, Result, and Endless text.
 2. Open Settings, switch to English, and confirm the currently open Settings screen updates immediately.
-3. Revisit Main Menu, Stage Select, Rules, Stage HUD, Endless HUD, Pause, Failed, and Completed screens in English.
+3. Revisit the Title Screen flow, Main Menu, Stage Select, Rules, Stage HUD, Endless HUD, Pause, Failed, and Completed screens in English.
 4. Restart the app and confirm English persists through `CGR_Language`.
 5. Switch back to Korean and confirm the same screens return to Korean without resetting progress.
 6. Confirm Reset Progress does not reset the selected language.
@@ -104,5 +106,14 @@ This checklist is for gameplay and build-readiness playtests with the two approv
 - Move MainMenu -> Endless -> Pause -> Retry -> MainMenu and confirm only one gameplay/menu BGM source is audible.
 - Verify the Music slider can be dragged smoothly from 0% to 100% and that Music Off stops only BGM.
 - Verify the SFX slider can be dragged smoothly from 0% to 100% and that SFX Off stops only one-shot sounds.
+- Confirm every user-facing button click plays one short `ui_click` SFX when SFX is enabled, and no click repeats while dragging sliders or scrollbars.
 - Do not add more BGM/SFX before this playtest pass finishes.
 - After gameplay feedback, consider a focused Audio Quality Sprint for device mix tuning, optional SFX replacement, and license/manifest tracking for any additional audio files.
+
+## Store Submission Prep Smoke
+
+- Run `Generate Release Readiness Report` and review all warnings, even when there are no hard failures.
+- Confirm Android target API level against the current Google Play requirement in Unity Build Profiles.
+- Confirm icons and splash branding are no longer placeholders before public release.
+- Confirm final screenshots are captured from the actual release candidate build.
+- Confirm signing/keystore material is stored outside the repository.

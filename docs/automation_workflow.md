@@ -44,6 +44,8 @@ The parent agent should:
 - ensure the release candidate does not expose the removed Playtest Stats UI or write new `CGR_Stats_` telemetry;
 - ensure Settings is split into General, Language, and Data sections with language/settings separate from destructive reset actions;
 - ensure Endless records stay PlayerPrefs-only under `CGR_Endless` keys and do not mutate stage stars/unlocks;
+- ensure final release preparation warnings are reviewed for `Nappa Studio`, `com.nappa.colorgaterush`, assigned Android icon, tap-to-start title screen, no separate custom splash scene/timer, Gemini BGM license terms TODO, target API, signing, data safety, and store screenshots;
+- use APK for local Android testing and AAB for Google Play submission; keep keystores and signing credentials outside the repository;
 - run compile/build validation when Unity is available.
 
 ## Phase 4 — QA review

@@ -19,6 +19,15 @@ namespace ColorGateRush.EditorTools
         private const string TitleScreenAssetPath = "Assets/_Project/Resources/ColorGateRush/Images/TitleScreen.png";
         private const string MainMenuBackgroundAssetPath = "Assets/_Project/Resources/ColorGateRush/Images/MainMenuBackground.png";
         private const string RetiredPrimaryButtonAssetPath = "Assets/_Project/Resources/ColorGateRush/UI/PrimaryButton.png";
+        private const string AppIconAssetPath = "Assets/_Project/Art/AppIcon/color_gate_rush_icon_1024.png";
+        private const string SplashTitleArtAssetPath = "Assets/_Project/Art/Splash/color_gate_rush_splash_1080x1920.png";
+        private const string AudioLicensesDocPath = "docs/audio_licenses.md";
+        private const string StoreListingDraftPath = "docs/store_listing_draft.md";
+        private const string ExpectedProductName = "Color Gate Rush";
+        private const string ExpectedCompanyName = "Nappa Studio";
+        private const string ExpectedAndroidPackageName = "com.nappa.colorgaterush";
+        private const string ExpectedBundleVersion = "0.9.0";
+        private const string ExpectedAndroidVersionCode = "1";
 
         [MenuItem("Tools/Color Gate Rush/Validate Project")]
         // Validates that the generated MVP scene and project rules are ready for play testing.
@@ -111,7 +120,7 @@ namespace ColorGateRush.EditorTools
             AppendValidation(report, "Stage progression and star targets", EnsureStageProgressionRules, ref hardFails);
             AppendValidation(report, "Stage 1-30 generation and balance smoke", EnsureRuntimeGenerationSmoke, ref hardFails);
             AppendValidation(report, "Runtime folder has no UnityEditor references", EnsureRuntimeFolderHasNoUnityEditorReferences, ref hardFails);
-            AppendValidation(report, "Only approved imported BGM audio and no other imported media/font/prefab assets under Assets/_Project", EnsureNoProjectRuntimeAssets, ref hardFails);
+            AppendValidation(report, "Only approved imported BGM and release UI image assets under Assets/_Project", EnsureNoProjectRuntimeAssets, ref hardFails);
             AppendValidation(report, "No automatic restart patterns", EnsureNoAutomaticRestartReferences, ref hardFails);
             AppendValidation(report, "No forbidden process launch or full PlayerPrefs reset usage", EnsureNoForbiddenProcessOrPrefsUsage, ref hardFails);
             AppendValidation(report, "Korean/English runtime localization hooks", EnsureLocalizationReferences, ref hardFails);
@@ -120,10 +129,11 @@ namespace ColorGateRush.EditorTools
             AppendValidation(report, "Shared wrong-shard three-strike rule", EnsureStageWrongShardFailureReferences, ref hardFails);
             AppendValidation(report, "Stage start hint is transient", EnsureStageStartHintReferences, ref hardFails);
             AppendValidation(report, "VisualTheme and HUD readability hooks exist", EnsureVisualPolishReferences, ref hardFails);
-            AppendValidation(report, "Title/menu images are bundled through Resources", EnsureMainMenuBackgroundReferences, ref hardFails);
+            AppendValidation(report, "Tap-to-start title screen and MainMenu background are configured", EnsureMainMenuBackgroundReferences, ref hardFails);
             AppendValidation(report, "Runtime component/material visual safety", EnsureRuntimeVisualsForReport, ref hardFails);
             AppendRuntimeMaterialReferenceReport(report);
             AppendAndroidReadiness(report, ref warnings);
+            AppendFinalReleasePreparationReadiness(report, ref warnings);
             AppendWebGlReadiness(report, ref warnings);
             report.AppendLine("Manual Checks: Android/WebGL builds, device thermal/performance pass, browser audio unlock, signing, icon, and store metadata are not automated.");
             report.AppendLine("Summary: hardFails=" + hardFails + ", warnings=" + warnings);
@@ -304,7 +314,7 @@ namespace ColorGateRush.EditorTools
             string projectSettings = File.ReadAllText(settingsPath);
             string companyName = ReadProjectSettingValue(projectSettings, "companyName");
             string productName = ReadProjectSettingValue(projectSettings, "productName");
-            string applicationIdentifier = ReadProjectSettingValue(projectSettings, "applicationIdentifier");
+            string applicationIdentifier = ReadNestedProjectSettingValue(projectSettings, "applicationIdentifier", "Android");
             string bundleVersion = ReadProjectSettingValue(projectSettings, "bundleVersion");
             string versionCode = ReadProjectSettingValue(projectSettings, "AndroidBundleVersionCode");
             string minSdk = ReadProjectSettingValue(projectSettings, "AndroidMinSdkVersion");
@@ -315,15 +325,26 @@ namespace ColorGateRush.EditorTools
             string landscapeLeft = ReadProjectSettingValue(projectSettings, "allowedAutorotateToLandscapeLeft");
             string scriptingBackend = ReadProjectSettingValue(projectSettings, "scriptingBackend");
             string architectures = ReadProjectSettingValue(projectSettings, "AndroidTargetArchitectures");
+            string customKeystore = ReadProjectSettingValue(projectSettings, "androidUseCustomKeystore");
+            string keystoreName = ReadProjectSettingValue(projectSettings, "AndroidKeystoreName");
+            string keyAlias = ReadProjectSettingValue(projectSettings, "AndroidKeyaliasName");
 
             if (string.IsNullOrEmpty(companyName) || companyName == "DefaultCompany")
             {
                 AppendWarning(report, "Android company name", "Replace DefaultCompany before release.", ref warnings);
             }
+            else if (companyName != ExpectedCompanyName)
+            {
+                AppendWarning(report, "Android company name", "Expected " + ExpectedCompanyName + " but found " + companyName + ".", ref warnings);
+            }
 
             if (string.IsNullOrEmpty(productName) || productName.IndexOf("template", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 AppendWarning(report, "Android product name", "Confirm a store-ready product name.", ref warnings);
+            }
+            else if (productName != ExpectedProductName)
+            {
+                AppendWarning(report, "Android product name", "Expected " + ExpectedProductName + " but found " + productName + ".", ref warnings);
             }
 
             if (string.IsNullOrEmpty(applicationIdentifier)
@@ -332,10 +353,31 @@ namespace ColorGateRush.EditorTools
             {
                 AppendWarning(report, "Android package name", "Set a unique reverse-DNS package id, e.g. com.studio.colorgaterush.", ref warnings);
             }
-
-            if (versionCode == "1")
+            else if (applicationIdentifier != ExpectedAndroidPackageName)
             {
-                AppendWarning(report, "Android version code", "Version code is still 1; bump deliberately for store uploads.", ref warnings);
+                AppendWarning(report, "Android package name", "Expected " + ExpectedAndroidPackageName + " but found " + applicationIdentifier + ".", ref warnings);
+            }
+
+            if (string.IsNullOrEmpty(bundleVersion) || string.IsNullOrEmpty(versionCode))
+            {
+                AppendWarning(report, "Android version information", "Bundle version and Android version code must be set before packaging.", ref warnings);
+            }
+            else
+            {
+                if (bundleVersion != ExpectedBundleVersion)
+                {
+                    AppendWarning(report, "Android bundle version", "Expected " + ExpectedBundleVersion + " but found " + bundleVersion + ".", ref warnings);
+                }
+
+                if (versionCode != ExpectedAndroidVersionCode)
+                {
+                    AppendWarning(report, "Android version code", "Expected " + ExpectedAndroidVersionCode + " for the first internal test upload, but found " + versionCode + ".", ref warnings);
+                }
+            }
+
+            if (targetSdk == "0")
+            {
+                AppendWarning(report, "Android target API", "Target API is automatic/default; verify the installed Android SDK target meets the current Google Play requirement before AAB upload.", ref warnings);
             }
 
             if (orientation == "0" || landscapeRight == "1" || landscapeLeft == "1")
@@ -343,12 +385,155 @@ namespace ColorGateRush.EditorTools
                 AppendWarning(report, "Android orientation", "This portrait runner should be reviewed for portrait-first orientation and safe area behavior.", ref warnings);
             }
 
+            AppendInfo(report, "Android product name", string.IsNullOrEmpty(productName) ? "missing" : productName);
+            AppendInfo(report, "Android package id", string.IsNullOrEmpty(applicationIdentifier) ? "missing" : applicationIdentifier);
             AppendInfo(report, "Android bundle version", string.IsNullOrEmpty(bundleVersion) ? "missing" : bundleVersion);
+            AppendInfo(report, "Android version code", string.IsNullOrEmpty(versionCode) ? "missing" : versionCode);
             AppendInfo(report, "Android SDK levels", "min=" + minSdk + ", target=" + targetSdk + " (0 usually means automatic/highest installed in Unity).");
             AppendInfo(report, "Android scripting backend", "value=" + scriptingBackend + " (Unity enum; verify IL2CPP for release if required).");
             AppendInfo(report, "Android target architectures", "value=" + architectures + " (verify ARM64 for Google Play).");
-            AppendInfo(report, "Android signing", "Keystore/signing credentials must be configured manually outside the repository.");
-            AppendInfo(report, "Android build artifact", "Use APK for local testing and AAB for Google Play submission.");
+            AppendAndroidSigningReadiness(report, customKeystore, keystoreName, keyAlias, ref warnings);
+            AppendInfo(report, "Android build artifact", "Use APK for local testing and signed AAB for Google Play internal testing/submission.");
+        }
+
+        // Reports Android signing configuration without exposing or requiring keystore passwords in source control.
+        private static void AppendAndroidSigningReadiness(StringBuilder report, string customKeystore, string keystoreName, string keyAlias, ref int warnings)
+        {
+            bool hasCustomKeystore = customKeystore == "1";
+            bool hasKeystorePath = !string.IsNullOrWhiteSpace(keystoreName);
+            bool hasAlias = !string.IsNullOrWhiteSpace(keyAlias);
+            if (!hasCustomKeystore || !hasKeystorePath || !hasAlias)
+            {
+                AppendWarning(report, "Android signing", "Custom keystore, upload key alias, and private passwords must be configured manually before AAB upload.", ref warnings);
+                return;
+            }
+
+            if (IsPathInsideProject(keystoreName))
+            {
+                AppendWarning(report, "Android signing", "Keystore appears to be inside the Unity project. Move it outside the repository and keep passwords private.", ref warnings);
+                return;
+            }
+
+            AppendInfo(report, "Android signing", "Custom keystore is configured outside the repository with alias `" + keyAlias + "`. Passwords are not inspected and must remain private.");
+        }
+
+        // Returns true when an absolute or project-relative path resolves inside the current Unity project folder.
+        private static bool IsPathInsideProject(string candidatePath)
+        {
+            if (string.IsNullOrWhiteSpace(candidatePath))
+            {
+                return false;
+            }
+
+            try
+            {
+                string projectRoot = Path.GetFullPath(Directory.GetCurrentDirectory()).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                string fullPath = Path.GetFullPath(candidatePath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                return fullPath.StartsWith(projectRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(fullPath, projectRoot, StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        // Appends final release-preparation warnings for store metadata, icon/splash, screenshots, and BGM license records.
+        private static void AppendFinalReleasePreparationReadiness(StringBuilder report, ref int warnings)
+        {
+            string settingsPath = "ProjectSettings/ProjectSettings.asset";
+            string projectSettings = File.Exists(settingsPath) ? File.ReadAllText(settingsPath) : string.Empty;
+
+            if (string.IsNullOrEmpty(projectSettings))
+            {
+                AppendWarning(report, "Release Player Settings", "ProjectSettings.asset is missing; icon, splash, and release metadata could not be inspected.", ref warnings);
+                return;
+            }
+
+            string appIconGuid = ReadUnityMetaGuid(AppIconAssetPath + ".meta");
+            int appIconReferenceCount = CountSubstring(projectSettings, appIconGuid);
+            if (!File.Exists(AppIconAssetPath) || string.IsNullOrEmpty(appIconGuid) || appIconReferenceCount <= 0)
+            {
+                AppendWarning(report, "App icon", "Android app icon is missing or not referenced by ProjectSettings: " + AppIconAssetPath, ref warnings);
+            }
+            else if (appIconReferenceCount < 6)
+            {
+                AppendWarning(report, "App icon", "App icon asset is referenced, but fewer than the expected Android icon slots are populated. Verify Android Player Settings manually.", ref warnings);
+            }
+            else
+            {
+                AppendInfo(report, "App icon", AppIconAssetPath + " is referenced by Android icon slots (" + appIconReferenceCount + " ProjectSettings references).");
+            }
+
+            if (File.Exists(TitleScreenAssetPath))
+            {
+                AppendInfo(report, "Title screen", "Tap-to-start title screen uses " + TitleScreenAssetPath + " and routes to MainMenu by explicit tap/click.");
+            }
+            else
+            {
+                AppendWarning(report, "Title screen", "Tap-to-start title image is missing: " + TitleScreenAssetPath, ref warnings);
+            }
+
+            if (File.Exists(SplashTitleArtAssetPath))
+            {
+                AppendInfo(report, "Custom splash screen", "Not used by design. Archived splash/title artwork may remain in the project, but no separate splash scene, timer, or transition is required.");
+            }
+
+            AppendBgmLicenseReadiness(report, ref warnings);
+            AppendStoreListingReadiness(report, ref warnings);
+            AppendWarning(report, "Store screenshots", "Capture final screenshots from the actual RC build: Title Screen, Main Menu, Stage gameplay, Endless gameplay, Stage Select, and Result screens.", ref warnings);
+            AppendWarning(report, "Google Play data safety", "Complete the Play Console data safety form manually; current project has no analytics/ad/network SDKs, but store answers must be user-verified.", ref warnings);
+            AppendInfo(report, "Unity splash screen", "Official Unity splash/logo settings remain a manual pre-submission review item.");
+        }
+
+        // Reports whether the approved BGM clips have a release license record.
+        private static void AppendBgmLicenseReadiness(StringBuilder report, ref int warnings)
+        {
+            if (!File.Exists(AudioLicensesDocPath))
+            {
+                AppendWarning(report, "BGM license record", "Missing " + AudioLicensesDocPath + "; record source, creator, license, download date, and attribution before submission.", ref warnings);
+                return;
+            }
+
+            string audioLicenseSource = File.ReadAllText(AudioLicensesDocPath);
+            bool mentionsMenuClip = audioLicenseSource.Contains(Path.GetFileName(MenuBgmAssetPath));
+            bool mentionsGameplayClip = audioLicenseSource.Contains(Path.GetFileName(GameplayBgmAssetPath));
+            if (!mentionsMenuClip || !mentionsGameplayClip)
+            {
+                AppendWarning(report, "BGM license record", "The audio license document must list both approved BGM files.", ref warnings);
+                return;
+            }
+
+            if (audioLicenseSource.IndexOf("TODO", StringComparison.OrdinalIgnoreCase) >= 0
+                || audioLicenseSource.IndexOf("Unknown", StringComparison.OrdinalIgnoreCase) >= 0
+                || audioLicenseSource.IndexOf("사용자 확인 필요", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                AppendWarning(report, "BGM license record", "BGM source/license fields still need user confirmation before store submission.", ref warnings);
+            }
+            else
+            {
+                AppendInfo(report, "BGM license record", AudioLicensesDocPath + " contains records for both approved BGM files.");
+            }
+        }
+
+        // Reports whether the store listing draft exists and still contains release TODOs.
+        private static void AppendStoreListingReadiness(StringBuilder report, ref int warnings)
+        {
+            if (!File.Exists(StoreListingDraftPath))
+            {
+                AppendWarning(report, "Store listing draft", "Missing " + StoreListingDraftPath + "; prepare name, descriptions, screenshots, privacy notes, and TODOs.", ref warnings);
+                return;
+            }
+
+            string storeListingSource = File.ReadAllText(StoreListingDraftPath);
+            if (storeListingSource.IndexOf("TODO", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                AppendWarning(report, "Store listing draft", "Store listing draft exists but still contains TODO items that must be resolved before public submission.", ref warnings);
+            }
+            else
+            {
+                AppendInfo(report, "Store listing draft", StoreListingDraftPath + " exists with no TODO markers.");
+            }
         }
 
         // Appends WebGL build-readiness notes that require browser testing after manual build.
@@ -433,6 +618,92 @@ namespace ColorGateRush.EditorTools
             return string.Empty;
         }
 
+        // Reads a nested YAML-style ProjectSettings value such as applicationIdentifier.Android.
+        private static string ReadNestedProjectSettingValue(string source, string parentKey, string childKey)
+        {
+            if (string.IsNullOrEmpty(source))
+            {
+                return string.Empty;
+            }
+
+            using (StringReader reader = new StringReader(source))
+            {
+                string line;
+                bool insideParent = false;
+                string parentPrefix = parentKey + ":";
+                string childPrefix = childKey + ":";
+                while ((line = reader.ReadLine()) != null)
+                {
+                    string trimmed = line.Trim();
+                    if (!insideParent)
+                    {
+                        if (trimmed == parentPrefix)
+                        {
+                            insideParent = true;
+                        }
+
+                        continue;
+                    }
+
+                    if (!line.StartsWith(" ", StringComparison.Ordinal))
+                    {
+                        return string.Empty;
+                    }
+
+                    if (trimmed.StartsWith(childPrefix, StringComparison.Ordinal))
+                    {
+                        return trimmed.Substring(childPrefix.Length).Trim();
+                    }
+                }
+            }
+
+            return string.Empty;
+        }
+
+        // Reads the guid line from a Unity .meta file used by static ProjectSettings reference checks.
+        private static string ReadUnityMetaGuid(string metaPath)
+        {
+            if (!File.Exists(metaPath))
+            {
+                return string.Empty;
+            }
+
+            using (StringReader reader = new StringReader(File.ReadAllText(metaPath)))
+            {
+                string line;
+                const string prefix = "guid:";
+                while ((line = reader.ReadLine()) != null)
+                {
+                    string trimmed = line.Trim();
+                    if (trimmed.StartsWith(prefix, StringComparison.Ordinal))
+                    {
+                        return trimmed.Substring(prefix.Length).Trim();
+                    }
+                }
+            }
+
+            return string.Empty;
+        }
+
+        // Counts non-overlapping occurrences of a token in a static settings source.
+        private static int CountSubstring(string source, string token)
+        {
+            if (string.IsNullOrEmpty(source) || string.IsNullOrEmpty(token))
+            {
+                return 0;
+            }
+
+            int count = 0;
+            int index = 0;
+            while ((index = source.IndexOf(token, index, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                index += token.Length;
+            }
+
+            return count;
+        }
+
         // Fails validation if runtime/editor project code uses prohibited process or PlayerPrefs reset APIs.
         private static void EnsureNoForbiddenProcessOrPrefsUsage()
         {
@@ -442,18 +713,131 @@ namespace ColorGateRush.EditorTools
                 throw new InvalidOperationException("Missing project scripts folder: " + scriptsPath);
             }
 
-            string deleteAllToken = "PlayerPrefs." + "DeleteAll";
-            string processStartToken = "Process." + "Start";
-            string processTypeToken = "System.Diagnostics." + "Process";
             string[] scripts = Directory.GetFiles(scriptsPath, "*.cs", SearchOption.AllDirectories);
+            List<string> findings = new List<string>();
             foreach (string script in scripts)
             {
                 string source = File.ReadAllText(script);
-                if (source.Contains(deleteAllToken) || source.Contains(processStartToken) || source.Contains(processTypeToken))
+                CollectForbiddenBuildApiUsage(script, source, findings);
+            }
+
+            if (findings.Count > 0)
+            {
+                throw new InvalidOperationException("Forbidden build-readiness API usage found:\n" + string.Join("\n", findings.ToArray()));
+            }
+        }
+
+        // Collects real forbidden API usages while ignoring validator diagnostics, comments, and string literals.
+        private static void CollectForbiddenBuildApiUsage(string scriptPath, string source, List<string> findings)
+        {
+            string normalizedPath = scriptPath.Replace('\\', '/');
+            string[] lines = source.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            bool inBlockComment = false;
+            Regex deleteAllPattern = new Regex(@"\bPlayerPrefs\s*\.\s*DeleteAll\s*\(", RegexOptions.Compiled);
+            Regex processStartPattern = new Regex(@"\bProcess\s*\.\s*Start\s*\(", RegexOptions.Compiled);
+            Regex processTypePattern = new Regex(@"\bSystem\s*\.\s*Diagnostics\s*\.\s*Process\b", RegexOptions.Compiled);
+            Regex newProcessPattern = new Regex(@"\bnew\s+Process\s*\(", RegexOptions.Compiled);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string codeLine = StripCommentsAndStringLiterals(lines[i], ref inBlockComment);
+                string pattern = null;
+                if (deleteAllPattern.IsMatch(codeLine))
                 {
-                    throw new InvalidOperationException("Forbidden build-readiness API usage found in " + script.Replace('\\', '/'));
+                    pattern = "PlayerPrefs.DeleteAll()";
+                }
+                else if (processStartPattern.IsMatch(codeLine))
+                {
+                    pattern = "Process.Start()";
+                }
+                else if (processTypePattern.IsMatch(codeLine))
+                {
+                    pattern = "System.Diagnostics.Process";
+                }
+                else if (newProcessPattern.IsMatch(codeLine))
+                {
+                    pattern = "new Process()";
+                }
+
+                if (!string.IsNullOrEmpty(pattern))
+                {
+                    findings.Add(normalizedPath + ":" + (i + 1) + " " + pattern + " -> " + lines[i].Trim());
                 }
             }
+        }
+
+        // Removes comments and string/char literal contents so static API scans only inspect executable code.
+        private static string StripCommentsAndStringLiterals(string line, ref bool inBlockComment)
+        {
+            StringBuilder builder = new StringBuilder(line.Length);
+            for (int i = 0; i < line.Length; i++)
+            {
+                char current = line[i];
+                char next = i + 1 < line.Length ? line[i + 1] : '\0';
+                if (inBlockComment)
+                {
+                    if (current == '*' && next == '/')
+                    {
+                        inBlockComment = false;
+                        i++;
+                    }
+
+                    builder.Append(' ');
+                    continue;
+                }
+
+                if (current == '/' && next == '/')
+                {
+                    break;
+                }
+
+                if (current == '/' && next == '*')
+                {
+                    inBlockComment = true;
+                    builder.Append(' ');
+                    i++;
+                    continue;
+                }
+
+                if (current == '"' || current == '\'')
+                {
+                    bool verbatimString = current == '"' && i > 0 && line[i - 1] == '@';
+                    char quote = current;
+                    builder.Append(' ');
+                    i = ConsumeLiteral(line, i + 1, quote, verbatimString);
+                    continue;
+                }
+
+                builder.Append(current);
+            }
+
+            return builder.ToString();
+        }
+
+        // Advances through one string or character literal and returns the closing quote index.
+        private static int ConsumeLiteral(string line, int startIndex, char quote, bool verbatimString)
+        {
+            for (int i = startIndex; i < line.Length; i++)
+            {
+                char current = line[i];
+                if (verbatimString && quote == '"' && current == '"' && i + 1 < line.Length && line[i + 1] == '"')
+                {
+                    i++;
+                    continue;
+                }
+
+                if (!verbatimString && current == '\\')
+                {
+                    i++;
+                    continue;
+                }
+
+                if (current == quote)
+                {
+                    return i;
+                }
+            }
+
+            return line.Length - 1;
         }
 
         // Confirms that the project is intentionally pinned to Unity 6 / 6000.x.
@@ -1092,7 +1476,7 @@ namespace ColorGateRush.EditorTools
             }
         }
 
-        // Verifies the main-menu and pause-flow source hooks exist and avoid direct start from Start button.
+        // Verifies the title, main-menu, and pause-flow source hooks exist and avoid direct start from Start button.
         private static void EnsurePauseAndMenuFlowReferences()
         {
             string gameManagerPath = "Assets/_Project/Scripts/Runtime/GameManager.cs";
@@ -1121,11 +1505,12 @@ namespace ColorGateRush.EditorTools
             string startRoute = configureArguments[1].Trim();
             string stageSelectRoute = configureArguments[2].Trim();
             string stageButtonRoute = configureArguments[8].Trim();
+            string[] allowedTitleRoutes = { "ReturnToMainMenu", "ShowMainMenu", "EnterMainMenu" };
             string[] allowedStageSelectRoutes = { "ShowStageSelect", "EnterStageSelect", "OpenStageSelect" };
             string[] forbiddenDirectStartRoutes = { "StartRun", "StartStage", "StartStageFromSelect", "RestartCurrentRun", "BeginRun", "StartSelectedStage" };
-            if (!ContainsAnyToken(titleRoute, new[] { "ReturnToMainMenu", "ShowMainMenu", "EnterMainMenu" }))
+            if (!ContainsAnyToken(titleRoute, allowedTitleRoutes))
             {
-                throw new InvalidOperationException("Title screen tap/click should route to Main Menu. Found in GameManager.cs _ui.Configure: " + titleRoute);
+                throw new InvalidOperationException("Title screen tap/click should route to MainMenu. Found in GameManager.cs _ui.Configure: " + titleRoute);
             }
 
             if (ContainsAnyToken(startRoute, forbiddenDirectStartRoutes))
@@ -1160,13 +1545,17 @@ namespace ColorGateRush.EditorTools
                 throw new InvalidOperationException("RuntimeUi.cs Main Menu Start panel contains a forbidden direct-start reference.");
             }
 
-            string titlePanelSource = ExtractSourceWindow(runtimeUiSource, "private GameObject CreateTitlePanel", 1800);
-            if (!gameManagerSource.Contains("private void ShowTitleScreen")
-                || !gameManagerSource.Contains("_state = GameState.Title")
+            string titlePanelSource = ExtractSourceWindow(runtimeUiSource, "private GameObject CreateTitlePanel", 1400);
+            if (!gameManagerSource.Contains("private void Start()")
+                || !gameManagerSource.Contains("ShowTitleScreen();")
+                || !gameManagerSource.Contains("private void ShowTitleScreen()")
+                || !gameManagerSource.Contains("GameState.Title")
+                || !runtimeUiSource.Contains("TitleScreenResourcePath")
+                || !runtimeUiSource.Contains("ShowTitleScreen")
                 || !titlePanelSource.Contains("TitleScreenPanel")
                 || !titlePanelSource.Contains("_onTitleContinue?.Invoke()"))
             {
-                throw new InvalidOperationException("App launch should show a tap/click title screen before Main Menu. Check GameManager.ShowTitleScreen and RuntimeUi.CreateTitlePanel.");
+                throw new InvalidOperationException("App launch should show the approved tap-to-start title screen, then route to MainMenu without a splash timer.");
             }
 
             string stageButtonSource = ExtractSourceWindow(runtimeUiSource, "private void RebuildStageButtons", 2200);
@@ -1488,9 +1877,27 @@ namespace ColorGateRush.EditorTools
                 throw new InvalidOperationException("Player current color should be expressed with a procedural accent, not text.");
             }
 
-            if (!runtimeUiSource.Contains("HudInfoPanel") || !runtimeUiSource.Contains("AddTextShadow") || !runtimeUiSource.Contains("profile.HudLabel"))
+            bool hasHudContrastPanel = runtimeUiSource.Contains("HudInfoPanel") && runtimeUiSource.Contains("HudPanelColor");
+            bool hasHudTextShadow = runtimeUiSource.Contains("AddTextShadow");
+            bool hasCurrentColorShapeLabel = runtimeUiSource.Contains("HudCurrentText")
+                && runtimeUiSource.Contains("LocalizationKey.Current")
+                && (runtimeUiSource.Contains("profile.HudLabel")
+                    || (runtimeUiSource.Contains("LocalizationManager.ColorName(profile.ColorId)")
+                        && runtimeUiSource.Contains("LocalizationManager.ShapeName(profile.ShapeType)"))
+                    || (runtimeUiSource.Contains("profile.ColorName") && runtimeUiSource.Contains("profile.ShapeName")));
+            if (!hasHudContrastPanel)
             {
-                throw new InvalidOperationException("Runtime HUD should include a contrast panel, text shadow, and color/shape label.");
+                throw new InvalidOperationException("Runtime HUD should include HudInfoPanel with HudPanelColor contrast backing.");
+            }
+
+            if (!hasHudTextShadow)
+            {
+                throw new InvalidOperationException("Runtime HUD should apply AddTextShadow to readable HUD text.");
+            }
+
+            if (!hasCurrentColorShapeLabel)
+            {
+                throw new InvalidOperationException("Runtime HUD should include a localized current color/shape label.");
             }
 
             string[] requiredHudTokens =
@@ -1500,6 +1907,7 @@ namespace ColorGateRush.EditorTools
                 "HudMistakeIconsText",
                 "HudCurrentColorChip",
                 "HudCurrentShapeGlyph",
+                "HudCurrentText",
                 "ComboBadgePanel",
                 "ComboBadgeText",
                 "FormatMistakeIcons",
@@ -2492,7 +2900,7 @@ namespace ColorGateRush.EditorTools
             }
         }
 
-        // Verifies the user-provided main menu background is bundled through Resources and referenced by RuntimeUi.
+        // Verifies the approved tap-to-start title image and the separate MainMenu background are both wired.
         private static void EnsureMainMenuBackgroundReferences()
         {
             if (!File.Exists(TitleScreenAssetPath))
@@ -2514,9 +2922,11 @@ namespace ColorGateRush.EditorTools
             string runtimeUiSource = File.ReadAllText(runtimeUiPath);
             if (!runtimeUiSource.Contains("ColorGateRush/Images/TitleScreen")
                 || !runtimeUiSource.Contains("CreateTitlePanel")
-                || !runtimeUiSource.Contains("LoadTitleScreenSprite"))
+                || !runtimeUiSource.Contains("LoadTitleScreenSprite")
+                || !runtimeUiSource.Contains("TitleScreenPanel")
+                || !runtimeUiSource.Contains("ApplyFullscreenImageFit"))
             {
-                throw new InvalidOperationException("RuntimeUi must load the title screen image from Resources before Main Menu.");
+                throw new InvalidOperationException("RuntimeUi must load the approved tap-to-start title image before MainMenu and fit it without cropping on mobile aspect ratios.");
             }
 
             if (!runtimeUiSource.Contains("ColorGateRush/Images/MainMenuBackground")
@@ -2525,9 +2935,19 @@ namespace ColorGateRush.EditorTools
             {
                 throw new InvalidOperationException("RuntimeUi must load the main menu background from Resources and keep a readability overlay.");
             }
+
+            if (!runtimeUiSource.Contains("TitleText")
+                || !runtimeUiSource.Contains("StartButton")
+                || !runtimeUiSource.Contains("EndlessModeButton")
+                || !runtimeUiSource.Contains("RulesButton")
+                || !runtimeUiSource.Contains("SettingsButton")
+                || !runtimeUiSource.Contains("QuitButton"))
+            {
+                throw new InvalidOperationException("MainMenu must keep runtime UI title text and Start/Endless/Rules/Settings/Quit buttons after the title screen.");
+            }
         }
 
-        // Fails validation if imported media assets outside the approved BGM clips and menu/title images are placed under the project folder.
+        // Fails validation if imported media assets outside the approved BGM clips and approved release images are placed under the project folder.
         private static void EnsureNoProjectRuntimeAssets()
         {
             string[] textureGuids = AssetDatabase.FindAssets("t:Texture2D", new[] { "Assets/_Project" });
@@ -2557,8 +2977,8 @@ namespace ColorGateRush.EditorTools
 
             if (disallowedTexturePaths.Count > 0 || disallowedAudioPaths.Count > 0 || modelGuids.Length > 0 || fontGuids.Length > 0 || prefabGuids.Length > 0)
             {
-                throw new InvalidOperationException("Imported media found under Assets/_Project. Only the approved BGM clips, title screen, main menu background, and retired unused button texture are allowed: "
-                    + MenuBgmAssetPath + ", " + GameplayBgmAssetPath + ", " + TitleScreenAssetPath + ", " + MainMenuBackgroundAssetPath + ", " + RetiredPrimaryButtonAssetPath
+                throw new InvalidOperationException("Imported media found under Assets/_Project. Only the approved BGM clips, tap-to-start title image, main menu background, app icon, archived unused splash art, and retired unused button texture are allowed: "
+                    + MenuBgmAssetPath + ", " + GameplayBgmAssetPath + ", " + TitleScreenAssetPath + ", " + MainMenuBackgroundAssetPath + ", " + AppIconAssetPath + ", " + SplashTitleArtAssetPath + ", " + RetiredPrimaryButtonAssetPath
                     + ". Extra textures: " + string.Join(", ", disallowedTexturePaths)
                     + ". Extra audio: " + string.Join(", ", disallowedAudioPaths));
             }
@@ -2567,7 +2987,11 @@ namespace ColorGateRush.EditorTools
         // Allows only the user-provided UI textures that are intentionally bundled through Resources.
         private static bool IsApprovedProjectTextureAsset(string assetPath)
         {
-            return assetPath == TitleScreenAssetPath || assetPath == MainMenuBackgroundAssetPath || assetPath == RetiredPrimaryButtonAssetPath;
+            return assetPath == TitleScreenAssetPath
+                || assetPath == MainMenuBackgroundAssetPath
+                || assetPath == AppIconAssetPath
+                || assetPath == SplashTitleArtAssetPath
+                || assetPath == RetiredPrimaryButtonAssetPath;
         }
 
         // Allows only the two user-provided BGM clips that are intentionally bundled through Resources.

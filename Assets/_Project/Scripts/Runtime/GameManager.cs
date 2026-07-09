@@ -112,7 +112,7 @@ namespace ColorGateRush
                 DismissTutorial);
         }
 
-        // Starts on the title screen instead of immediately showing the main menu.
+        // Starts on the tap-to-start title screen without any automatic transition timer.
         private void Start()
         {
             ShowTitleScreen();
@@ -440,7 +440,7 @@ namespace ColorGateRush
             _ui.ShowMainMenu();
         }
 
-        // Shows the tap-to-start title screen while keeping gameplay stopped.
+        // Shows the title screen and waits for explicit player input before opening MainMenu.
         private void ShowTitleScreen()
         {
             CancelInvoke();

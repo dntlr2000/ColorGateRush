@@ -122,10 +122,10 @@ namespace ColorGateRush
             _accentShape.transform.position = PlayerAccentPosition();
         }
 
-        // Computes the stable ground position for the player color accent.
+        // Computes a separated ground position so the current shard-shape accent does not hide under the player sphere.
         private Vector3 PlayerAccentPosition()
         {
-            return new Vector3(transform.position.x, GameConstants.TrackY + 0.40f, transform.position.z - 0.72f);
+            return new Vector3(transform.position.x, GameConstants.TrackY + 0.28f, transform.position.z - 1.42f);
         }
 
         // Routes input through the enabled Unity input backend for keyboard and touch lane changes.
