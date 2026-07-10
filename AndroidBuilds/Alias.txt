@@ -1,0 +1,6 @@
+Package Name: com.npfest.colorgaterush
+Version: 0.9.0
+Version Code: 1
+Keystore alias: color-gate-rush-upload
+Build type: AAB
+Development Build: OFF

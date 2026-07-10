@@ -190,7 +190,7 @@ MonoBehaviour:
     - line: '|   androidMaxAspectRatio: 2.4'
     - line: '|   androidMinAspectRatio: 1'
     - line: '|   applicationIdentifier:'
-    - line: '|     Android: com.npfest.colorgaterush'
+    - line: '|     Android: com.nappa.colorgaterush'
     - line: '|     Standalone: com.Unity-Technologies.com.unity.template.urp-blank'
     - line: '|     iPhone: com.Unity-Technologies.com.unity.template.urp-blank'
     - line: '|   buildNumber:'
@@ -988,7 +988,7 @@ MonoBehaviour:
     - rid: 770985423460630528
       type: {class: AndroidPlatformBuildSettings, ns: UnityEditor.Android, asm: UnityEditor.Android.Extensions}
       data:
-        m_Development: 1
+        m_Development: 0
         m_ConnectProfiler: 0
         m_BuildWithDeepProfilingSupport: 0
         m_AllowDebugging: 0
@@ -1005,7 +1005,7 @@ MonoBehaviour:
         m_DebugSymbolLevel: 1
         m_DebugSymbolFormat: 5
         m_CurrentDeploymentTargetId: R3CM8026NJD
-        m_BuildType: 1
-        m_BuildAppBundle: 0
+        m_BuildType: 2
+        m_BuildAppBundle: 1
         m_IPAddressToConnect: 
         m_SymlinkSources: 0
